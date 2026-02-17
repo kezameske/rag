@@ -243,6 +243,7 @@ export interface GlobalSettings {
   embedding_base_url: string | null
   embedding_api_key: string | null
   embedding_dimensions: number | null
+  system_prompt: string | null
   has_chunks: boolean
 }
 
@@ -254,6 +255,7 @@ export interface GlobalSettingsUpdate {
   embedding_base_url?: string | null
   embedding_api_key?: string | null
   embedding_dimensions?: number | null
+  system_prompt?: string | null
 }
 
 export async function getSettings(): Promise<GlobalSettings> {

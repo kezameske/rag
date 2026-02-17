@@ -49,6 +49,7 @@ class GlobalSettingsResponse(BaseModel):
     embedding_base_url: str | None = None
     embedding_api_key: str | None = None
     embedding_dimensions: int | None = None
+    system_prompt: str | None = None
     has_chunks: bool = False
 
 
@@ -60,6 +61,7 @@ class GlobalSettingsUpdate(BaseModel):
     embedding_base_url: str | None = None
     embedding_api_key: str | None = None
     embedding_dimensions: int | None = None
+    system_prompt: str | None = None
 
 
 def mask_api_key(key: str | None) -> str | None:
@@ -109,6 +111,7 @@ async def get_settings(current_user: User = Depends(get_current_user)):
         embedding_base_url=data.get("embedding_base_url"),
         embedding_api_key=mask_api_key(decrypt_value(data.get("embedding_api_key"))),
         embedding_dimensions=data.get("embedding_dimensions"),
+        system_prompt=data.get("system_prompt"),
         has_chunks=has_chunks,
     )
 
@@ -166,6 +169,8 @@ async def update_settings(
         update_data["embedding_api_key"] = encrypt_value(settings_data.embedding_api_key) if settings_data.embedding_api_key else None
     if settings_data.embedding_dimensions is not None:
         update_data["embedding_dimensions"] = settings_data.embedding_dimensions or None
+    if settings_data.system_prompt is not None:
+        update_data["system_prompt"] = settings_data.system_prompt or None
 
     if not update_data:
         # Nothing to update, return current state
@@ -178,6 +183,7 @@ async def update_settings(
             embedding_base_url=data.get("embedding_base_url") if data else None,
             embedding_api_key=mask_api_key(decrypt_value(data.get("embedding_api_key"))) if data else None,
             embedding_dimensions=data.get("embedding_dimensions") if data else None,
+            system_prompt=data.get("system_prompt") if data else None,
             has_chunks=has_chunks,
         )
 
@@ -208,5 +214,6 @@ async def update_settings(
         embedding_base_url=saved.get("embedding_base_url"),
         embedding_api_key=mask_api_key(decrypt_value(saved.get("embedding_api_key"))),
         embedding_dimensions=saved.get("embedding_dimensions"),
+        system_prompt=saved.get("system_prompt"),
         has_chunks=has_chunks,
     )

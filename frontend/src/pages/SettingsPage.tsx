@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Lock, Eye, EyeOff, FileText, MessageCircle } from 'lucide-react'
+import { Lock, Eye, EyeOff, FileText, MessageCircle, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { UserMenu } from '@/components/UserMenu'
@@ -25,6 +25,7 @@ export function SettingsPage() {
   const [embeddingBaseUrl, setEmbeddingBaseUrl] = useState('')
   const [embeddingApiKey, setEmbeddingApiKey] = useState('')
   const [embeddingDimensions, setEmbeddingDimensions] = useState('')
+  const [systemPrompt, setSystemPrompt] = useState('')
   const [showLlmKey, setShowLlmKey] = useState(false)
   const [showEmbeddingKey, setShowEmbeddingKey] = useState(false)
 
@@ -53,6 +54,7 @@ export function SettingsPage() {
       setEmbeddingBaseUrl(settings.embedding_base_url || '')
       setEmbeddingApiKey(settings.embedding_api_key || '')
       setEmbeddingDimensions(settings.embedding_dimensions?.toString() || '')
+      setSystemPrompt(settings.system_prompt || '')
       setHasChunks(settings.has_chunks)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings')
@@ -74,6 +76,7 @@ export function SettingsPage() {
         embedding_base_url: embeddingBaseUrl || null,
         embedding_api_key: embeddingApiKey || null,
         embedding_dimensions: embeddingDimensions ? parseInt(embeddingDimensions, 10) : null,
+        system_prompt: systemPrompt || null,
       }
       await updateSettings(update)
       setSuccess(true)
@@ -180,6 +183,33 @@ export function SettingsPage() {
                   {error}
                 </div>
               )}
+
+              {/* System Prompt */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-medium text-foreground">System Prompt</h3>
+                  {systemPrompt && (
+                    <button
+                      type="button"
+                      onClick={() => setSystemPrompt('')}
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      Reset to default
+                    </button>
+                  )}
+                </div>
+                <textarea
+                  className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-y"
+                  placeholder="Leave empty to use the default system prompt. The default instructs the assistant to use document search tools, cite sources, and answer based on retrieved content."
+                  value={systemPrompt}
+                  onChange={(e) => setSystemPrompt(e.target.value)}
+                  rows={6}
+                />
+              </div>
+
+              {/* Divider */}
+              <div className="border-t" />
 
               {/* LLM Configuration */}
               <div className="space-y-4">

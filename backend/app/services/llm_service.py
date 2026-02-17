@@ -109,7 +109,7 @@ def get_global_llm_settings() -> dict[str, Any]:
     """
     supabase = get_supabase_client()
     result = supabase.table("global_settings").select(
-        "llm_model, llm_base_url, llm_api_key"
+        "llm_model, llm_base_url, llm_api_key, system_prompt"
     ).limit(1).maybe_single().execute()
 
     data = result.data if result else None
@@ -125,6 +125,7 @@ def get_global_llm_settings() -> dict[str, Any]:
         "model": data.get("llm_model") or "gpt-4o",
         "base_url": data.get("llm_base_url") or None,
         "api_key": api_key,
+        "system_prompt": data.get("system_prompt") or None,
     }
 
 
@@ -146,6 +147,7 @@ async def astream_chat_response(
     """
     llm_settings = get_global_llm_settings()
     model = llm_settings["model"]
+    system_prompt = llm_settings.get("system_prompt") or SYSTEM_PROMPT
     client = get_traced_async_openai_client(
         base_url=llm_settings["base_url"],
         api_key=llm_settings["api_key"],
@@ -153,7 +155,7 @@ async def astream_chat_response(
 
     request_kwargs: dict[str, Any] = {
         "model": model,
-        "messages": [{"role": "system", "content": SYSTEM_PROMPT}, *messages],
+        "messages": [{"role": "system", "content": system_prompt}, *messages],
         "stream": True,
     }
     if tools:
