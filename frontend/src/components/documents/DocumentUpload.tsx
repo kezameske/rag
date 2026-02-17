@@ -1,5 +1,4 @@
 import { useCallback, useState } from 'react'
-import { Button } from '@/components/ui/button'
 import { uploadDocument } from '@/lib/api'
 
 const ALLOWED_EXTENSIONS = ['.txt', '.md', '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.html', '.csv']
