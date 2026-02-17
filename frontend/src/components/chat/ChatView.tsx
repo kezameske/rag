@@ -434,7 +434,10 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
       <div className="px-6 pb-6 pt-2">
         <div className="mx-auto max-w-3xl">
           <form onSubmit={handleSubmit}>
-            <div className="chat-input-container flex items-end gap-3 rounded-2xl px-5 py-3">
+            <div
+              className="chat-input-container flex items-end gap-3 rounded-2xl px-5 py-4 cursor-text"
+              onClick={() => textareaRef.current?.focus()}
+            >
               <textarea
                 ref={textareaRef}
                 value={input}
@@ -444,7 +447,7 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
                 disabled={sending}
                 rows={1}
                 className="flex-1 resize-none bg-transparent text-[15px] leading-relaxed placeholder:text-muted-foreground/60 focus:outline-none disabled:opacity-50"
-                style={{ maxHeight: 160 }}
+                style={{ minHeight: 28, maxHeight: 160 }}
               />
               {sending ? (
                 <Button
