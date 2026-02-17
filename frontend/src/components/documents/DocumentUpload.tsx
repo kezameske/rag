@@ -17,8 +17,8 @@ export function DocumentUpload({ onUploadComplete }: DocumentUploadProps) {
     if (!ALLOWED_EXTENSIONS.includes(ext)) {
       return `Unsupported file type. Allowed: ${ALLOWED_EXTENSIONS.join(', ')}`
     }
-    if (file.size > 10 * 1024 * 1024) {
-      return 'File too large. Maximum size is 10 MB.'
+    if (file.size > 50 * 1024 * 1024) {
+      return 'File too large. Maximum size is 50 MB.'
     }
     return null
   }
@@ -98,7 +98,7 @@ export function DocumentUpload({ onUploadComplete }: DocumentUploadProps) {
             {uploading ? 'Uploading...' : 'Drop files here or click to upload'}
           </p>
           <p className="text-xs text-muted-foreground">
-            Supported: .txt, .md, .pdf, .docx, .xlsx, .html, .csv (max 10 MB)
+            Supported: .txt, .md, .pdf, .docx, .xlsx, .html, .csv (max 50 MB)
           </p>
         </div>
       </div>
