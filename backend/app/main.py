@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 import traceback
 
 from app.config import get_settings
-from app.routers import auth, threads, chat, documents, eval
+from app.routers import auth, threads, chat, documents, eval, users
 from app.routers import settings as settings_router
 
 settings = get_settings()
@@ -46,4 +46,5 @@ app.include_router(threads.router)
 app.include_router(chat.router)
 app.include_router(documents.router)
 app.include_router(settings_router.router)
+app.include_router(users.router)
 app.include_router(eval.router)

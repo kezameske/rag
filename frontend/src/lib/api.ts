@@ -268,3 +268,41 @@ export async function updateSettings(settings: GlobalSettingsUpdate): Promise<Gl
     body: JSON.stringify(settings),
   })
 }
+
+// Users API
+export interface UserInfo {
+  id: string
+  email: string
+  created_at: string
+  is_admin: boolean
+  is_approved: boolean
+}
+
+export interface UserUpdate {
+  is_approved?: boolean
+  is_admin?: boolean
+}
+
+export async function listUsers(): Promise<UserInfo[]> {
+  return fetchApi<UserInfo[]>('/users')
+}
+
+export async function updateUser(userId: string, data: UserUpdate): Promise<void> {
+  return fetchApi('/users/' + userId, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteUser(userId: string): Promise<void> {
+  const headers = await getAuthHeaders()
+  const response = await fetch(`${API_URL}/users/${userId}`, {
+    method: 'DELETE',
+    headers,
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Delete failed' }))
+    throw new Error(error.detail || 'Delete failed')
+  }
+}

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Settings } from 'lucide-react'
+import { LogOut, Settings, Users } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Button } from '@/components/ui/button'
 
@@ -37,6 +37,11 @@ export function UserMenu({ email, onSignOut, isAdmin = false }: UserMenuProps) {
   function handleOpenSettings() {
     setPopoverOpen(false)
     navigate('/settings')
+  }
+
+  function handleOpenUsers() {
+    setPopoverOpen(false)
+    navigate('/users')
   }
 
   return (
@@ -80,14 +85,24 @@ export function UserMenu({ email, onSignOut, isAdmin = false }: UserMenuProps) {
         </PopoverTrigger>
         <PopoverContent className="w-56 p-2" align="start" side="top">
           {isAdmin && (
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-2"
-              onClick={handleOpenSettings}
-            >
-              <Settings className="h-4 w-4" />
-              Settings
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-2"
+                onClick={handleOpenSettings}
+              >
+                <Settings className="h-4 w-4" />
+                Settings
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-2"
+                onClick={handleOpenUsers}
+              >
+                <Users className="h-4 w-4" />
+                Users
+              </Button>
+            </>
           )}
           <Button
             variant="ghost"

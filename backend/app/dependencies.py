@@ -13,6 +13,7 @@ class User(BaseModel):
     id: str
     email: str | None = None
     is_admin: bool = False
+    is_approved: bool = False
 
 
 async def get_current_user(
@@ -40,23 +41,37 @@ async def get_current_user(
                 detail="Invalid token: missing user ID"
             )
 
-        # Query user_profiles for admin status
+        # Query user_profiles for admin and approval status
         supabase = get_supabase_client()
-        profile_result = supabase.table("user_profiles").select("is_admin").eq(
+        profile_result = supabase.table("user_profiles").select("is_admin, is_approved").eq(
             "user_id", user_id
         ).maybe_single().execute()
 
         is_admin = False
+        is_approved = False
         if profile_result and profile_result.data:
             is_admin = profile_result.data.get("is_admin", False)
+            is_approved = profile_result.data.get("is_approved", False)
 
-        return User(id=user_id, email=email, is_admin=is_admin)
+        return User(id=user_id, email=email, is_admin=is_admin, is_approved=is_approved)
 
     except JWTError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid token: {str(e)}"
         )
+
+
+async def get_approved_user(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    """Require the current user to be approved."""
+    if not current_user.is_approved:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account pending approval"
+        )
+    return current_user
 
 
 async def get_admin_user(

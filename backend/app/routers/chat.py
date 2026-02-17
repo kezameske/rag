@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from starlette.responses import StreamingResponse
 from datetime import datetime
 
-from app.dependencies import get_current_user, User
+from app.dependencies import get_approved_user, User
 from app.db.supabase import get_supabase_client
 from app.models.schemas import MessageCreate, MessageResponse
 from app.services.llm_service import astream_chat_response, get_available_tools
@@ -51,7 +51,7 @@ def user_has_documents(user_id: str) -> bool:
 @router.get("/messages", response_model=list[MessageResponse])
 async def get_messages(
     thread_id: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_approved_user)
 ):
     """Get all messages for a thread from database."""
     await verify_thread_access(thread_id, current_user.id)
@@ -66,7 +66,7 @@ async def get_messages(
 async def send_message(
     thread_id: str,
     message_data: MessageCreate,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_approved_user)
 ):
     """Send a message and stream the assistant's response via SSE."""
     await verify_thread_access(thread_id, current_user.id)

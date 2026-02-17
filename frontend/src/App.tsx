@@ -1,12 +1,14 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
 import { AuthForm } from './components/auth/AuthForm'
+import { PendingApproval } from './components/auth/PendingApproval'
 import { ChatPage } from './pages/ChatPage'
 import { DocumentsPage } from './pages/DocumentsPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { UsersPage } from './pages/UsersPage'
 
 function App() {
-  const { user, loading } = useAuth()
+  const { user, loading, isApproved, signOut } = useAuth()
 
   if (loading) {
     return (
@@ -14,6 +16,11 @@ function App() {
         <div className="text-muted-foreground">Loading...</div>
       </div>
     )
+  }
+
+  // Authenticated but not approved
+  if (user && !isApproved) {
+    return <PendingApproval onSignOut={signOut} />
   }
 
   return (
@@ -30,6 +37,10 @@ function App() {
         <Route
           path="/settings"
           element={user ? <SettingsPage /> : <Navigate to="/auth" replace />}
+        />
+        <Route
+          path="/users"
+          element={user ? <UsersPage /> : <Navigate to="/auth" replace />}
         />
         <Route
           path="/auth"

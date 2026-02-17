@@ -23,7 +23,7 @@ export function AuthForm() {
     try {
       if (isSignUp) {
         await signUp(email, password)
-        setMessage('Check your email for the confirmation link!')
+        setMessage('Account created! An admin will need to approve your account before you can access the app.')
       } else {
         await signIn(email, password)
       }

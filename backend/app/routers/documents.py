@@ -3,7 +3,7 @@ import hashlib
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, status
 
-from app.dependencies import get_current_user, User
+from app.dependencies import get_approved_user, User
 from app.db.supabase import get_supabase_client
 from app.services.ingestion_service import process_document
 
@@ -29,7 +29,7 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_approved_user),
 ):
     """Upload a document for ingestion."""
     # Validate file extension
@@ -140,7 +140,7 @@ async def upload_document(
 
 
 @router.get("")
-async def list_documents(current_user: User = Depends(get_current_user)):
+async def list_documents(current_user: User = Depends(get_approved_user)):
     """List all documents for the current user."""
     supabase = get_supabase_client()
     result = supabase.table("documents").select("*").eq(
@@ -153,7 +153,7 @@ async def list_documents(current_user: User = Depends(get_current_user)):
 @router.delete("/{document_id}")
 async def delete_document(
     document_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_approved_user),
 ):
     """Delete a document and its storage file (chunks cascade via FK)."""
     supabase = get_supabase_client()

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import datetime
 
-from app.dependencies import get_current_user, User
+from app.dependencies import get_approved_user, User
 from app.db.supabase import get_supabase_client
 from app.models.schemas import ThreadCreate, ThreadResponse, ThreadUpdate
 
@@ -9,7 +9,7 @@ router = APIRouter(prefix="/threads", tags=["threads"])
 
 
 @router.get("", response_model=list[ThreadResponse])
-async def list_threads(current_user: User = Depends(get_current_user)):
+async def list_threads(current_user: User = Depends(get_approved_user)):
     """List all threads for the current user."""
     supabase = get_supabase_client()
     result = supabase.table("threads").select("*").eq("user_id", current_user.id).order("updated_at", desc=True).execute()
@@ -19,7 +19,7 @@ async def list_threads(current_user: User = Depends(get_current_user)):
 @router.post("", response_model=ThreadResponse, status_code=status.HTTP_201_CREATED)
 async def create_thread(
     thread_data: ThreadCreate,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_approved_user)
 ):
     """Create a new thread."""
     supabase = get_supabase_client()
@@ -45,7 +45,7 @@ async def create_thread(
 @router.get("/{thread_id}", response_model=ThreadResponse)
 async def get_thread(
     thread_id: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_approved_user)
 ):
     """Get a specific thread."""
     supabase = get_supabase_client()
@@ -64,7 +64,7 @@ async def get_thread(
 async def update_thread(
     thread_id: str,
     thread_data: ThreadUpdate,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_approved_user)
 ):
     """Update a thread's title."""
     supabase = get_supabase_client()
@@ -88,7 +88,7 @@ async def update_thread(
 @router.delete("/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_thread(
     thread_id: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_approved_user)
 ):
     """Delete a thread."""
     supabase = get_supabase_client()

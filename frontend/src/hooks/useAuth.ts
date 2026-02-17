@@ -9,8 +9,9 @@ export function useAuth() {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [isApproved, setIsApproved] = useState(false)
 
-  async function fetchAdminStatus(accessToken: string) {
+  async function fetchUserStatus(accessToken: string) {
     try {
       const response = await fetch(`${API_URL}/auth/me`, {
         headers: {
@@ -21,11 +22,14 @@ export function useAuth() {
       if (response.ok) {
         const data = await response.json()
         setIsAdmin(data.is_admin === true)
+        setIsApproved(data.is_approved === true)
       } else {
         setIsAdmin(false)
+        setIsApproved(false)
       }
     } catch {
       setIsAdmin(false)
+      setIsApproved(false)
     }
   }
 
@@ -35,7 +39,7 @@ export function useAuth() {
       setSession(session)
       setUser(session?.user ?? null)
       if (session?.access_token) {
-        await fetchAdminStatus(session.access_token)
+        await fetchUserStatus(session.access_token)
       }
       setLoading(false)
     })
@@ -47,9 +51,10 @@ export function useAuth() {
       setSession(session)
       setUser(session?.user ?? null)
       if (session?.access_token) {
-        await fetchAdminStatus(session.access_token)
+        await fetchUserStatus(session.access_token)
       } else {
         setIsAdmin(false)
+        setIsApproved(false)
       }
       setLoading(false)
     })
@@ -77,6 +82,7 @@ export function useAuth() {
     const { error } = await supabase.auth.signOut()
     if (error) throw error
     setIsAdmin(false)
+    setIsApproved(false)
   }
 
   return {
@@ -84,6 +90,7 @@ export function useAuth() {
     session,
     loading,
     isAdmin,
+    isApproved,
     signIn,
     signUp,
     signOut,
