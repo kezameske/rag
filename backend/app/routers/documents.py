@@ -22,7 +22,7 @@ ALLOWED_TYPES = {
     "application/octet-stream": None,  # fallback, check extension
 }
 ALLOWED_EXTENSIONS = {".txt", ".md", ".pdf", ".docx", ".doc", ".xlsx", ".xls", ".html", ".csv"}
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
 
 @router.post("/upload")
@@ -48,7 +48,7 @@ async def upload_document(
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File too large. Maximum size is 10 MB."
+            detail="File too large. Maximum size is 50 MB."
         )
 
     if len(content) == 0:
