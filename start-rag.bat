@@ -27,16 +27,21 @@ timeout /t 2 /nobreak >nul
 echo Starting Cloudflare Tunnel (api-rag.jungholee.com)...
 start "RAG Tunnel" /min cmd /k ""%LOCALAPPDATA%\Microsoft\WinGet\Packages\Cloudflare.cloudflared_Microsoft.Winget.Source_8wekyb3d8bbwe\cloudflared.exe" tunnel run rag-backend"
 
+:: Start keep-alive ping (prevents Supabase free tier from pausing)
+echo Starting Supabase keep-alive (pings every 6 hours)...
+start "RAG Keep-Alive" /min powershell -ExecutionPolicy Bypass -File "%PROJECT_ROOT%scripts\keep-alive.ps1"
+
 echo.
 echo ========================================
 echo   Services starting in new windows:
-echo     Backend:  http://localhost:8000
-echo     Frontend: http://localhost:5173
-echo     Tunnel:   https://api-rag.jungholee.com
+echo     Backend:    http://localhost:8000
+echo     Frontend:   http://localhost:5173
+echo     Tunnel:     https://api-rag.jungholee.com
+echo     Keep-Alive: Pings every 6 hours
 echo ========================================
 echo.
 echo Close this window anytime. The services
 echo will keep running in their own windows.
-echo (Tunnel window starts minimized)
+echo (Tunnel and keep-alive windows start minimized)
 echo.
 pause
