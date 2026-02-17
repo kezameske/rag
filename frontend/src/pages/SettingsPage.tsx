@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Lock, Eye, EyeOff, FileText, MessageCircle, Settings } from 'lucide-react'
+import { Lock, Eye, EyeOff, FileText, MessageCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { UserMenu } from '@/components/UserMenu'
