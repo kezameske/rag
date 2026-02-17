@@ -1,9 +1,7 @@
 import { useState, useEffect, forwardRef, useImperativeHandle } from 'react'
-import { MessageSquarePlus, Trash2, MessageSquare } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Plus, Trash2, MessageSquare } from 'lucide-react'
 import { listThreads, createThread, deleteThread } from '@/lib/api'
 import type { Thread } from '@/types'
-import { cn } from '@/lib/utils'
 
 interface ThreadListProps {
   selectedThreadId: string | null
@@ -76,54 +74,105 @@ export const ThreadList = forwardRef<ThreadListRef, ThreadListProps>(
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="text-muted-foreground">Loading...</div>
+        <div className="flex gap-1.5">
+          <span className="thinking-dot" />
+          <span className="thinking-dot" />
+          <span className="thinking-dot" />
+        </div>
       </div>
     )
   }
 
   return (
     <div className="flex h-full flex-col">
-      <div className="p-4">
-        <Button
+      {/* New Chat button */}
+      <div className="px-3 pb-3">
+        <button
           onClick={handleCreateThread}
           disabled={creating}
-          className="w-full"
+          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium transition-all"
+          style={{
+            color: 'hsl(var(--sidebar-fg-bright))',
+            border: '1px dashed hsl(var(--sidebar-border))',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'hsl(var(--sidebar-hover))'
+            e.currentTarget.style.borderStyle = 'solid'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent'
+            e.currentTarget.style.borderStyle = 'dashed'
+          }}
         >
-          <MessageSquarePlus className="mr-2 h-4 w-4" />
-          {creating ? 'Creating...' : 'New Chat'}
-        </Button>
+          <Plus className="h-4 w-4" style={{ color: 'hsl(var(--sidebar-fg))' }} />
+          {creating ? 'Creating...' : 'New conversation'}
+        </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2">
+      {/* Thread list */}
+      <div className="sidebar-scroll flex-1 overflow-y-auto px-3">
         {threads.length === 0 ? (
-          <div className="p-4 text-center text-sm text-muted-foreground">
-            No conversations yet. Start a new chat!
+          <div className="px-3 py-6 text-center text-[13px]" style={{ color: 'hsl(var(--sidebar-muted))' }}>
+            No conversations yet.
+            <br />
+            Start a new chat!
           </div>
         ) : (
-          <div className="space-y-1">
-            {threads.map(thread => (
-              <div
-                key={thread.id}
-                onClick={() => onSelectThread(thread.id)}
-                className={cn(
-                  "group flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm hover:bg-accent",
-                  selectedThreadId === thread.id && "bg-accent"
-                )}
-              >
-                <div className="flex min-w-0 items-center gap-2">
-                  <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <span className="truncate">{thread.title}</span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                  onClick={(e) => handleDeleteThread(e, thread.id)}
+          <div className="space-y-0.5">
+            {threads.map(thread => {
+              const isSelected = selectedThreadId === thread.id
+              return (
+                <div
+                  key={thread.id}
+                  onClick={() => onSelectThread(thread.id)}
+                  className="group flex cursor-pointer items-center justify-between rounded-lg px-3 py-2 transition-all"
+                  style={{
+                    background: isSelected ? 'hsl(var(--sidebar-active))' : 'transparent',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSelected) e.currentTarget.style.background = 'hsl(var(--sidebar-hover))'
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSelected) e.currentTarget.style.background = 'transparent'
+                  }}
                 >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </div>
-            ))}
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <MessageSquare
+                      className="h-3.5 w-3.5 shrink-0"
+                      style={{
+                        color: isSelected ? 'hsl(var(--primary))' : 'hsl(var(--sidebar-muted))',
+                      }}
+                    />
+                    <span
+                      className="truncate text-[13px]"
+                      style={{
+                        color: isSelected
+                          ? 'hsl(var(--sidebar-fg-bright))'
+                          : 'hsl(var(--sidebar-fg))',
+                        fontWeight: isSelected ? 500 : 400,
+                      }}
+                    >
+                      {thread.title}
+                    </span>
+                  </div>
+                  <button
+                    className="ml-2 shrink-0 rounded-md p-1 opacity-0 transition-all group-hover:opacity-100 hover:!opacity-100"
+                    onClick={(e) => handleDeleteThread(e, thread.id)}
+                    style={{ color: 'hsl(var(--sidebar-muted))' }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = 'hsl(var(--destructive))'
+                      e.currentTarget.style.background = 'hsl(var(--destructive) / 0.1)'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = 'hsl(var(--sidebar-muted))'
+                      e.currentTarget.style.background = 'transparent'
+                    }}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>

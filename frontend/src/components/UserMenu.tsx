@@ -27,31 +27,12 @@ function getDisplayName(email: string): string {
     .join(' ')
 }
 
-function getAvatarColor(email: string): string {
-  const colors = [
-    'bg-orange-500',
-    'bg-blue-500',
-    'bg-green-500',
-    'bg-purple-500',
-    'bg-pink-500',
-    'bg-yellow-500',
-    'bg-red-500',
-    'bg-indigo-500',
-  ]
-  let hash = 0
-  for (let i = 0; i < email.length; i++) {
-    hash = email.charCodeAt(i) + ((hash << 5) - hash)
-  }
-  return colors[Math.abs(hash) % colors.length]
-}
-
 export function UserMenu({ email, onSignOut, isAdmin = false }: UserMenuProps) {
   const [popoverOpen, setPopoverOpen] = useState(false)
   const navigate = useNavigate()
 
   const initials = getInitials(email)
   const displayName = getDisplayName(email)
-  const avatarColor = getAvatarColor(email)
 
   function handleOpenSettings() {
     setPopoverOpen(false)
@@ -62,13 +43,38 @@ export function UserMenu({ email, onSignOut, isAdmin = false }: UserMenuProps) {
     <>
       <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
         <PopoverTrigger asChild>
-          <button className="flex w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-accent transition-colors">
-            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${avatarColor} text-white text-sm font-medium`}>
+          <button
+            className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition-all"
+            style={{ color: 'hsl(var(--sidebar-fg))' }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'hsl(var(--sidebar-hover))'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent'
+            }}
+          >
+            <div
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[13px] font-semibold"
+              style={{
+                background: 'hsl(var(--primary) / 0.15)',
+                color: 'hsl(var(--primary))',
+              }}
+            >
               {initials}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{displayName}</p>
-              <p className="truncate text-xs text-muted-foreground">{email}</p>
+              <p
+                className="truncate text-[13px] font-medium"
+                style={{ color: 'hsl(var(--sidebar-fg-bright))' }}
+              >
+                {displayName}
+              </p>
+              <p
+                className="truncate text-[11px]"
+                style={{ color: 'hsl(var(--sidebar-muted))' }}
+              >
+                {email}
+              </p>
             </div>
           </button>
         </PopoverTrigger>

@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, Square, Loader2, ChevronDown, ChevronRight } from 'lucide-react'
+import { Send, Square, ChevronDown, ChevronRight, Search } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { getMessages, sendMessage, updateThread } from '@/lib/api'
 import type { Message } from '@/types'
 
@@ -34,6 +33,7 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const initialMessageSentRef = useRef(false)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -165,7 +165,24 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
     if (!input.trim() || sending) return
     const userMessage = input.trim()
     setInput('')
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+    }
     await doSend(userMessage)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSubmit(e)
+    }
+  }
+
+  const handleTextareaInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value)
+    const el = e.target
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px'
   }
 
   useEffect(() => {
@@ -203,7 +220,11 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="flex items-center gap-3">
+          <span className="thinking-dot" />
+          <span className="thinking-dot" />
+          <span className="thinking-dot" />
+        </div>
       </div>
     )
   }
@@ -211,88 +232,194 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
   return (
     <div className="flex h-full flex-col">
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="chat-scroll flex-1 overflow-y-auto">
         {messages.length === 0 && !streamingContent && !waiting && !error ? (
           <div className="flex h-full items-center justify-center">
-            <div className="text-center text-muted-foreground">
-              <p className="text-2xl font-medium mb-2">What can I help with?</p>
+            <div className="text-center">
+              <p className="font-display text-3xl tracking-tight" style={{ color: 'hsl(var(--foreground))' }}>
+                Start a <span className="italic" style={{ color: 'hsl(var(--primary))' }}>conversation</span>
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Type a message below to begin.
+              </p>
             </div>
           </div>
         ) : (
-          <div className="mx-auto max-w-3xl px-4 py-8">
-            <div className="space-y-6">
-              {messages.map(message => (
-                <div key={message.id}>
+          <div className="mx-auto max-w-3xl px-6 py-10">
+            <div className="space-y-8">
+              {messages.map((message, i) => (
+                <div
+                  key={message.id}
+                  className="message-animate"
+                  style={{ animationDelay: `${Math.min(i * 0.05, 0.3)}s` }}
+                >
                   {message.role === 'user' ? (
                     <div className="flex justify-end">
-                      <div className="max-w-[85%] rounded-3xl bg-secondary px-5 py-3">
+                      <div
+                        className="max-w-[80%] rounded-2xl rounded-br-md px-5 py-3 text-[15px] leading-relaxed"
+                        style={{
+                          background: 'hsl(var(--user-bubble))',
+                          color: 'hsl(var(--user-bubble-fg))',
+                        }}
+                      >
                         <p className="whitespace-pre-wrap">{message.content}</p>
                       </div>
                     </div>
                   ) : (
-                    <div className="prose prose-neutral dark:prose-invert max-w-none">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {message.content}
-                      </ReactMarkdown>
+                    <div className="flex gap-4">
+                      <div
+                        className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+                        style={{ background: 'hsl(var(--primary) / 0.1)' }}
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="hsl(var(--primary))"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                          <path d="M2 17l10 5 10-5" />
+                          <path d="M2 12l10 5 10-5" />
+                        </svg>
+                      </div>
+                      <div className="prose prose-neutral dark:prose-invert max-w-none text-[15px] leading-relaxed prose-p:my-2 prose-headings:mt-4 prose-headings:mb-2 prose-pre:bg-secondary prose-pre:border prose-pre:border-border prose-code:text-primary prose-code:font-medium">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {message.content}
+                        </ReactMarkdown>
+                      </div>
                     </div>
                   )}
                 </div>
               ))}
 
-              {/* Loading indicator */}
+              {/* Thinking indicator */}
               {waiting && !streamingContent && !subAgent.active && (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm">Thinking...</span>
+                <div className="message-animate flex gap-4">
+                  <div
+                    className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+                    style={{ background: 'hsl(var(--primary) / 0.1)' }}
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="hsl(var(--primary))"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                      <path d="M2 17l10 5 10-5" />
+                      <path d="M2 12l10 5 10-5" />
+                    </svg>
+                  </div>
+                  <div className="flex items-center gap-2 pt-2">
+                    <span className="thinking-dot" />
+                    <span className="thinking-dot" />
+                    <span className="thinking-dot" />
+                  </div>
                 </div>
               )}
 
               {/* Sub-agent panel */}
               {(subAgent.active || subAgent.result) && (
-                <div className="border-l-4 border-blue-400 bg-blue-50 dark:bg-blue-950/30 rounded-r-lg p-3 my-3">
-                  <button
-                    onClick={() => setSubAgent(prev => ({ ...prev, collapsed: !prev.collapsed }))}
-                    className="flex items-center gap-1 text-sm font-medium text-blue-700 dark:text-blue-300 w-full text-left"
+                <div className="message-animate ml-11">
+                  <div
+                    className="overflow-hidden rounded-xl border transition-all"
+                    style={{
+                      borderColor: 'hsl(var(--primary) / 0.2)',
+                      background: 'hsl(var(--primary) / 0.04)',
+                    }}
                   >
-                    {subAgent.collapsed ? (
-                      <ChevronRight className="h-4 w-4" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )}
-                    Sub-agent: Document Analysis
-                    {subAgent.active && (
-                      <Loader2 className="h-3 w-3 animate-spin ml-2" />
-                    )}
-                  </button>
-                  {!subAgent.collapsed && (
-                    <div className="mt-2 text-sm text-blue-600 dark:text-blue-400">
-                      {subAgent.active && subAgent.thinking && (
-                        <p className="italic">{subAgent.thinking}</p>
+                    <button
+                      onClick={() => setSubAgent(prev => ({ ...prev, collapsed: !prev.collapsed }))}
+                      className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-[13px] font-medium transition-colors hover:opacity-80"
+                      style={{ color: 'hsl(var(--primary))' }}
+                    >
+                      {subAgent.collapsed ? (
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      ) : (
+                        <ChevronDown className="h-3.5 w-3.5" />
                       )}
-                      {subAgent.result && (
-                        <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none mt-1">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {subAgent.result}
-                          </ReactMarkdown>
-                        </div>
+                      <Search className="h-3.5 w-3.5" />
+                      Searching documents
+                      {subAgent.active && (
+                        <span className="ml-1.5 flex gap-1">
+                          <span className="thinking-dot" style={{ width: 4, height: 4 }} />
+                          <span className="thinking-dot" style={{ width: 4, height: 4 }} />
+                          <span className="thinking-dot" style={{ width: 4, height: 4 }} />
+                        </span>
                       )}
-                    </div>
-                  )}
+                    </button>
+                    {!subAgent.collapsed && (
+                      <div
+                        className="border-t px-4 py-3 text-[13px]"
+                        style={{
+                          borderColor: 'hsl(var(--primary) / 0.1)',
+                          color: 'hsl(var(--muted-foreground))',
+                        }}
+                      >
+                        {subAgent.active && subAgent.thinking && (
+                          <p className="italic">{subAgent.thinking}</p>
+                        )}
+                        {subAgent.result && (
+                          <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {subAgent.result}
+                            </ReactMarkdown>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
               {/* Streaming message */}
               {streamingContent && (
-                <div className="prose prose-neutral dark:prose-invert max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {streamingContent}
-                  </ReactMarkdown>
+                <div className="message-animate flex gap-4">
+                  <div
+                    className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+                    style={{ background: 'hsl(var(--primary) / 0.1)' }}
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="hsl(var(--primary))"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                      <path d="M2 17l10 5 10-5" />
+                      <path d="M2 12l10 5 10-5" />
+                    </svg>
+                  </div>
+                  <div className="prose prose-neutral dark:prose-invert max-w-none text-[15px] leading-relaxed prose-p:my-2 prose-headings:mt-4 prose-headings:mb-2 prose-pre:bg-secondary prose-pre:border prose-pre:border-border prose-code:text-primary prose-code:font-medium">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {streamingContent}
+                    </ReactMarkdown>
+                  </div>
                 </div>
               )}
 
               {/* Error message */}
               {error && (
-                <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                <div
+                  className="message-animate rounded-xl px-4 py-3 text-[13px]"
+                  style={{
+                    background: 'hsl(var(--destructive) / 0.08)',
+                    color: 'hsl(var(--destructive))',
+                    border: '1px solid hsl(var(--destructive) / 0.15)',
+                  }}
+                >
                   {error}
                 </div>
               )}
@@ -304,37 +431,50 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
       </div>
 
       {/* Input area */}
-      <div className="border-t bg-background">
-        <div className="mx-auto max-w-3xl px-4 py-4">
-          <form onSubmit={handleSubmit} className="flex gap-2">
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask anything"
-              disabled={sending}
-              className="flex-1 rounded-full px-4"
-            />
-            {sending ? (
-              <Button
-                type="button"
-                variant="destructive"
-                size="icon"
-                className="rounded-full"
-                onClick={handleStop}
-                title="Stop generating"
-              >
-                <Square className="h-4 w-4" />
-              </Button>
-            ) : (
-              <Button
-                type="submit"
-                size="icon"
-                className="rounded-full"
-                disabled={!input.trim()}
-              >
-                <Send className="h-4 w-4" />
-              </Button>
-            )}
+      <div className="px-6 pb-6 pt-2">
+        <div className="mx-auto max-w-3xl">
+          <form onSubmit={handleSubmit}>
+            <div className="chat-input-container flex items-end gap-3 rounded-2xl px-5 py-3">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={handleTextareaInput}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask anything..."
+                disabled={sending}
+                rows={1}
+                className="flex-1 resize-none bg-transparent text-[15px] leading-relaxed placeholder:text-muted-foreground/60 focus:outline-none disabled:opacity-50"
+                style={{ maxHeight: 160 }}
+              />
+              {sending ? (
+                <Button
+                  type="button"
+                  size="icon"
+                  className="h-9 w-9 shrink-0 rounded-xl transition-all hover:scale-105"
+                  onClick={handleStop}
+                  title="Stop generating"
+                  style={{
+                    background: 'hsl(var(--destructive))',
+                    color: 'white',
+                  }}
+                >
+                  <Square className="h-3.5 w-3.5" />
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  size="icon"
+                  className="h-9 w-9 shrink-0 rounded-xl transition-all hover:scale-105"
+                  disabled={!input.trim()}
+                  style={{
+                    background: input.trim() ? 'hsl(var(--primary))' : 'hsl(var(--muted))',
+                    color: input.trim() ? 'white' : 'hsl(var(--muted-foreground))',
+                  }}
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
           </form>
         </div>
       </div>

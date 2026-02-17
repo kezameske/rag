@@ -1,14 +1,12 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Send } from 'lucide-react'
+import { Send, FileText, MessageCircle } from 'lucide-react'
 import { ThreadList, ThreadListRef } from '@/components/chat/ThreadList'
 import { ChatView } from '@/components/chat/ChatView'
 import { UserMenu } from '@/components/UserMenu'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { useAuth } from '@/hooks/useAuth'
 import { createThread } from '@/lib/api'
-import logoSvg from '/logo.svg'
 
 export function ChatPage() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null)
@@ -56,31 +54,61 @@ export function ChatPage() {
   }
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen overflow-hidden">
       {/* Sidebar */}
-      <div className="flex w-64 flex-col border-r bg-muted/30">
-        <div className="border-b p-4">
-          <img src={logoSvg} alt="Logo" className="h-8" />
+      <div
+        className="sidebar-texture flex w-72 flex-col"
+        style={{ background: 'hsl(var(--sidebar-bg))' }}
+      >
+        {/* Sidebar Header */}
+        <div className="px-5 pt-5 pb-4">
+          <img
+            src="/jungholee_logo.png"
+            alt="jungholee.com"
+            className="h-8 rounded"
+          />
         </div>
-        <nav className="border-b p-2">
-          <div className="flex gap-1">
-            <button className="flex-1 px-3 py-1.5 rounded-md text-sm bg-muted font-medium">
+
+        {/* Navigation */}
+        <nav className="px-3 pb-3">
+          <div className="flex gap-1 rounded-lg p-1" style={{ background: 'hsl(var(--sidebar-hover))' }}>
+            <button
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-all"
+              style={{
+                background: 'hsl(var(--sidebar-active))',
+                color: 'hsl(var(--sidebar-fg-bright))',
+                boxShadow: '0 1px 2px rgb(0 0 0 / 0.2)',
+              }}
+            >
+              <MessageCircle className="h-3.5 w-3.5" />
               Chat
             </button>
             <button
               onClick={() => navigate('/documents')}
-              className="flex-1 px-3 py-1.5 rounded-md text-sm hover:bg-muted transition-colors"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-all hover:opacity-80"
+              style={{ color: 'hsl(var(--sidebar-fg))' }}
             >
+              <FileText className="h-3.5 w-3.5" />
               Documents
             </button>
           </div>
         </nav>
+
+        {/* Divider */}
+        <div className="mx-4 mb-1" style={{ borderTop: '1px solid hsl(var(--sidebar-border))' }} />
+
+        {/* Thread List */}
         <ThreadList
           ref={threadListRef}
           selectedThreadId={selectedThreadId}
           onSelectThread={handleSelectThread}
         />
-        <div className="border-t p-2">
+
+        {/* User Menu */}
+        <div
+          className="mt-auto px-3 py-3"
+          style={{ borderTop: '1px solid hsl(var(--sidebar-border))' }}
+        >
           {user?.email && (
             <UserMenu email={user.email} onSignOut={handleSignOut} isAdmin={isAdmin} />
           )}
@@ -88,7 +116,7 @@ export function ChatPage() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1">
+      <div className="flex-1 bg-background">
         {selectedThreadId ? (
           <ChatView
             threadId={selectedThreadId}
@@ -96,27 +124,60 @@ export function ChatPage() {
             initialMessage={initialMessage}
           />
         ) : (
-          <div className="flex h-full flex-col items-center justify-center">
-            <h1 className="text-2xl font-medium mb-8">What can I help with?</h1>
-            <form onSubmit={handleWelcomeSubmit} className="w-full max-w-2xl px-4">
-              <div className="flex gap-2">
-                <Input
+          /* Welcome Screen */
+          <div className="flex h-full flex-col items-center justify-center px-4">
+            <div className="mb-12 text-center">
+              <h1
+                className="font-display text-5xl leading-tight tracking-tight"
+                style={{ color: 'hsl(var(--foreground))' }}
+              >
+                What can I help
+                <br />
+                <span className="italic" style={{ color: 'hsl(var(--primary))' }}>
+                  you with?
+                </span>
+              </h1>
+              <p className="mt-4 text-[15px] text-muted-foreground">
+                Ask questions about your documents or start a conversation.
+              </p>
+            </div>
+
+            <form onSubmit={handleWelcomeSubmit} className="w-full max-w-xl">
+              <div className="chat-input-container flex items-center gap-2 rounded-2xl px-5 py-3">
+                <input
                   value={welcomeInput}
                   onChange={(e) => setWelcomeInput(e.target.value)}
-                  placeholder="Ask anything"
+                  placeholder="Ask anything..."
                   disabled={creating}
-                  className="flex-1 rounded-full px-4"
+                  className="flex-1 bg-transparent text-[15px] placeholder:text-muted-foreground/60 focus:outline-none"
                 />
                 <Button
                   type="submit"
                   size="icon"
-                  className="rounded-full"
+                  className="h-9 w-9 shrink-0 rounded-xl transition-all hover:scale-105"
                   disabled={!welcomeInput.trim() || creating}
+                  style={{
+                    background: welcomeInput.trim() ? 'hsl(var(--primary))' : 'hsl(var(--muted))',
+                    color: welcomeInput.trim() ? 'white' : 'hsl(var(--muted-foreground))',
+                  }}
                 >
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
             </form>
+
+            {/* Subtle hint cards */}
+            <div className="mt-10 flex gap-3">
+              {['Summarize a document', 'Find specific details', 'Compare sections'].map((hint) => (
+                <button
+                  key={hint}
+                  onClick={() => setWelcomeInput(hint)}
+                  className="rounded-xl border border-border/60 px-4 py-2.5 text-[13px] text-muted-foreground transition-all hover:border-primary/30 hover:text-foreground hover:shadow-sm"
+                >
+                  {hint}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>

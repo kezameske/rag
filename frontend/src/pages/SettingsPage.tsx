@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Lock, Eye, EyeOff } from 'lucide-react'
+import { Lock, Eye, EyeOff, FileText, MessageCircle, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { UserMenu } from '@/components/UserMenu'
 import { useAuth } from '@/hooks/useAuth'
 import { getSettings, updateSettings, type GlobalSettings, type GlobalSettingsUpdate } from '@/lib/api'
-import logoSvg from '/logo.svg'
 
 export function SettingsPage() {
   const { user, signOut, isAdmin, loading: authLoading } = useAuth()
@@ -107,30 +106,53 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen overflow-hidden">
       {/* Sidebar */}
-      <div className="flex w-64 flex-col border-r bg-muted/30">
-        <div className="border-b p-4">
-          <img src={logoSvg} alt="Logo" className="h-8" />
+      <div
+        className="sidebar-texture flex w-72 flex-col"
+        style={{ background: 'hsl(var(--sidebar-bg))' }}
+      >
+        {/* Sidebar Header */}
+        <div className="px-5 pt-5 pb-4">
+          <img
+            src="/jungholee_logo.png"
+            alt="jungholee.com"
+            className="h-8 rounded"
+          />
         </div>
-        <nav className="border-b p-2">
-          <div className="flex gap-1">
+
+        {/* Navigation */}
+        <nav className="px-3 pb-3">
+          <div className="flex gap-1 rounded-lg p-1" style={{ background: 'hsl(var(--sidebar-hover))' }}>
             <button
               onClick={() => navigate('/')}
-              className="flex-1 px-3 py-1.5 rounded-md text-sm hover:bg-muted transition-colors"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-all hover:opacity-80"
+              style={{ color: 'hsl(var(--sidebar-fg))' }}
             >
+              <MessageCircle className="h-3.5 w-3.5" />
               Chat
             </button>
             <button
               onClick={() => navigate('/documents')}
-              className="flex-1 px-3 py-1.5 rounded-md text-sm hover:bg-muted transition-colors"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-all hover:opacity-80"
+              style={{ color: 'hsl(var(--sidebar-fg))' }}
             >
+              <FileText className="h-3.5 w-3.5" />
               Documents
             </button>
           </div>
         </nav>
+
+        {/* Divider */}
+        <div className="mx-4 mb-1" style={{ borderTop: '1px solid hsl(var(--sidebar-border))' }} />
+
         <div className="flex-1" />
-        <div className="border-t p-2">
+
+        {/* User Menu */}
+        <div
+          className="mt-auto px-3 py-3"
+          style={{ borderTop: '1px solid hsl(var(--sidebar-border))' }}
+        >
           {user?.email && (
             <UserMenu email={user.email} onSignOut={handleSignOut} isAdmin={isAdmin} />
           )}
@@ -138,9 +160,9 @@ export function SettingsPage() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 overflow-auto">
-        <div className="max-w-lg mx-auto p-8">
-          <h1 className="text-2xl font-bold mb-6">Settings</h1>
+      <div className="flex-1 overflow-auto bg-background">
+        <div className="max-w-lg mx-auto px-8 py-10">
+          <h1 className="font-display text-3xl tracking-tight mb-6">Settings</h1>
 
           {loading ? (
             <div className="flex items-center justify-center py-8">
