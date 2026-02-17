@@ -1,0 +1,7 @@
+This is a test document for upload validation.
+
+It contains multiple lines of text to verify that the ingestion pipeline can process plain text files correctly.
+
+The document should be chunked and embedded without errors. This content is generic and not intended to test RAG retrieval accuracy - just the upload and processing pipeline.
+
+Line count: This file has enough content to produce at least one chunk during processing.
