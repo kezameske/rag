@@ -192,7 +192,10 @@ export async function sendMessage(options: SendMessageOptions): Promise<void> {
 }
 
 // Documents API
-export async function uploadDocument(file: File): Promise<Document> {
+export async function uploadDocument(
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<Document> {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) {
     throw new Error('Not authenticated')
@@ -201,20 +204,34 @@ export async function uploadDocument(file: File): Promise<Document> {
   const formData = new FormData()
   formData.append('file', file)
 
-  const response = await fetch(`${API_URL}/documents/upload`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${session.access_token}`,
-    },
-    body: formData,
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100))
+      }
+    })
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText))
+      } else {
+        try {
+          const err = JSON.parse(xhr.responseText)
+          reject(new Error(err.detail || 'Upload failed'))
+        } catch {
+          reject(new Error('Upload failed'))
+        }
+      }
+    })
+
+    xhr.addEventListener('error', () => reject(new Error('Upload failed')))
+
+    xhr.open('POST', `${API_URL}/documents/upload`)
+    xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`)
+    xhr.send(formData)
   })
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Upload failed' }))
-    throw new Error(error.detail || 'Upload failed')
-  }
-
-  return response.json()
 }
 
 export async function listDocuments(): Promise<Document[]> {

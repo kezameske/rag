@@ -10,6 +10,8 @@ interface DocumentUploadProps {
 export function DocumentUpload({ onUploadComplete }: DocumentUploadProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [uploadFileName, setUploadFileName] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const validateFile = (file: File): string | null => {
@@ -38,13 +40,17 @@ export function DocumentUpload({ onUploadComplete }: DocumentUploadProps) {
     setUploading(true)
     try {
       for (const file of fileArray) {
-        await uploadDocument(file)
+        setUploadFileName(file.name)
+        setProgress(0)
+        await uploadDocument(file, (percent) => setProgress(percent))
       }
       onUploadComplete()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
       setUploading(false)
+      setProgress(0)
+      setUploadFileName('')
     }
   }
 
@@ -83,7 +89,7 @@ export function DocumentUpload({ onUploadComplete }: DocumentUploadProps) {
             ? 'border-primary bg-primary/5'
             : 'border-muted-foreground/25 hover:border-muted-foreground/50'
         }`}
-        onClick={() => document.getElementById('file-upload')?.click()}
+        onClick={() => !uploading && document.getElementById('file-upload')?.click()}
       >
         <input
           id="file-upload"
@@ -92,14 +98,30 @@ export function DocumentUpload({ onUploadComplete }: DocumentUploadProps) {
           accept=".txt,.md,.pdf,.docx,.doc,.xlsx,.xls,.html,.csv"
           multiple
           onChange={handleFileInput}
+          disabled={uploading}
         />
         <div className="space-y-2">
-          <p className="text-sm font-medium">
-            {uploading ? 'Uploading...' : 'Drop files here or click to upload'}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Supported: .txt, .md, .pdf, .docx, .xlsx, .html, .csv (max 50 MB)
-          </p>
+          {uploading ? (
+            <>
+              <p className="text-sm font-medium">Uploading {uploadFileName}...</p>
+              <div className="mx-auto max-w-xs">
+                <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all duration-300 ease-out"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{progress}%</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-medium">Drop files here or click to upload</p>
+              <p className="text-xs text-muted-foreground">
+                Supported: .txt, .md, .pdf, .docx, .xlsx, .html, .csv (max 50 MB)
+              </p>
+            </>
+          )}
         </div>
       </div>
 
