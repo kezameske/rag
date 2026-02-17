@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 async def search_documents(
     query: str,
     user_id: str,
-    top_k: int = 10,
+    top_k: int = 15,
     threshold: float = 0.3,
     metadata_filter: dict | None = None,
 ) -> list[dict]:
