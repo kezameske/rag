@@ -9,6 +9,10 @@ from app.db.supabase import get_supabase_client
 
 logger = logging.getLogger(__name__)
 
+# Max characters of each passage shown to the reranker. Chunks are ~1000 chars;
+# the old 500-char cap hid half of every chunk from the scorer.
+RERANK_PASSAGE_CHARS = 2000
+
 
 class RelevanceScore(BaseModel):
     index: int
@@ -34,7 +38,9 @@ def _get_llm_settings() -> dict:
     }
 
 
-async def rerank_chunks(query: str, chunks: list[dict], top_k: int = 10) -> list[dict]:
+async def rerank_chunks(
+    query: str, chunks: list[dict], top_k: int = 10, min_score: float = 3.0
+) -> list[dict]:
     """
     Rerank search result chunks using LLM relevance scoring.
 
@@ -42,9 +48,11 @@ async def rerank_chunks(query: str, chunks: list[dict], top_k: int = 10) -> list
         query: The original search query
         chunks: List of chunk dicts with 'content' key
         top_k: Number of top results to return
+        min_score: Drop chunks scoring below this (0-10) instead of padding to
+            top_k, so off-topic queries can legitimately return nothing.
 
     Returns:
-        Reranked list of chunks, sorted by relevance
+        Reranked list of chunks, sorted by relevance (each gets a 'rerank_score')
     """
     if not chunks:
         return []
@@ -58,7 +66,7 @@ async def rerank_chunks(query: str, chunks: list[dict], top_k: int = 10) -> list
     # Build passages list for the prompt
     passages = []
     for i, chunk in enumerate(chunks):
-        content = chunk.get("content", "")[:500]  # Truncate for prompt size
+        content = chunk.get("content", "")[:RERANK_PASSAGE_CHARS]
         passages.append(f"[{i}] {content}")
 
     passages_text = "\n\n".join(passages)
@@ -110,10 +118,18 @@ async def rerank_chunks(query: str, chunks: list[dict], top_k: int = 10) -> list
     scores.sort(key=lambda x: x["score"], reverse=True)
 
     reranked = []
-    for s in scores[:top_k]:
+    for s in scores:
+        if s["score"] < min_score:
+            continue  # drop clearly-irrelevant chunks instead of padding to top_k
         idx = s["index"]
         if 0 <= idx < len(chunks):
-            reranked.append(chunks[idx])
+            chunk = chunks[idx]
+            chunk["rerank_score"] = s["score"]  # carry 0-10 relevance downstream
+            reranked.append(chunk)
+        if len(reranked) >= top_k:
+            break
 
-    logger.info(f"Reranked {len(chunks)} chunks to top {len(reranked)}")
+    logger.info(
+        f"Reranked {len(chunks)} chunks to top {len(reranked)} (min_score={min_score})"
+    )
     return reranked

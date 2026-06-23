@@ -33,10 +33,22 @@ async def execute_tool_call(tool_call: dict, user_id: str) -> str:
         # Format results for LLM context
         formatted = []
         for r in results:
-            formatted.append(
-                f"[Source: {r.get('metadata', {}).get('filename', 'unknown')}] "
-                f"(similarity: {r['similarity']:.2f})\n{r['content']}"
-            )
+            meta = r.get("metadata", {}) or {}
+            filename = meta.get("filename", "unknown")
+            # Prefer the reranker's 0-10 relevance; fall back to the hybrid/vector
+            # score. Use .get() so a missing key never raises a KeyError, and
+            # avoid mislabeling the hybrid RPC's RRF value as "similarity".
+            rerank_score = r.get("rerank_score")
+            if rerank_score is not None:
+                score_str = f"relevance: {rerank_score:.1f}/10"
+            else:
+                score_str = f"score: {r.get('similarity', r.get('rrf_score', 0.0)):.3f}"
+            doc_id = r.get("document_id", "")
+            source = f"[Source: {filename}"
+            if doc_id:
+                source += f" | doc:{doc_id}"
+            source += f" | {score_str}]"
+            formatted.append(f"{source}\n{r.get('content', '')}")
 
         return "\n\n---\n\n".join(formatted)
 
