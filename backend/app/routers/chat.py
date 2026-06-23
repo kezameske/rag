@@ -2,7 +2,7 @@ import json
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from starlette.responses import StreamingResponse
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.dependencies import get_approved_user, User
 from app.db.supabase import get_supabase_client
@@ -73,7 +73,7 @@ async def send_message(
     supabase = get_supabase_client()
 
     # Store user message in database
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     user_message_result = supabase.table("messages").insert({
         "thread_id": thread_id,
         "user_id": current_user.id,
@@ -106,6 +106,7 @@ async def send_message(
         try:
             while rounds < MAX_TOOL_ROUNDS:
                 rounds += 1
+                full_response = ""  # keep only the final round's text; drop inter-round preamble
                 async for event in astream_chat_response(current_messages, tools=tools, user_id=current_user.id):
                     if event["type"] == "text_delta":
                         full_response += event["content"]
@@ -186,7 +187,7 @@ async def send_message(
                                 "user_id": current_user.id,
                                 "role": "assistant",
                                 "content": full_response,
-                                "created_at": datetime.utcnow().isoformat(),
+                                "created_at": datetime.now(timezone.utc).isoformat(),
                             }
                             if tool_calls_log:
                                 msg_data["tool_calls"] = tool_calls_log
@@ -195,7 +196,7 @@ async def send_message(
 
                             # Update thread's updated_at
                             supabase.table("threads").update({
-                                "updated_at": datetime.utcnow().isoformat()
+                                "updated_at": datetime.now(timezone.utc).isoformat()
                             }).eq("id", thread_id).execute()
 
                         yield f"event: done\ndata: {{}}\n\n"
@@ -213,7 +214,7 @@ async def send_message(
                     "user_id": current_user.id,
                     "role": "assistant",
                     "content": full_response,
-                    "created_at": datetime.utcnow().isoformat(),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                 }
                 if tool_calls_log:
                     msg_data["tool_calls"] = tool_calls_log

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.dependencies import get_approved_user, User
 from app.db.supabase import get_supabase_client
@@ -25,7 +25,7 @@ async def create_thread(
     supabase = get_supabase_client()
 
     # Store in database (no more OpenAI thread needed with Responses API)
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     result = supabase.table("threads").insert({
         "user_id": current_user.id,
         "title": thread_data.title or "New Chat",
@@ -79,7 +79,7 @@ async def update_thread(
 
     result = supabase.table("threads").update({
         "title": thread_data.title,
-        "updated_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", thread_id).execute()
 
     return result.data[0]
