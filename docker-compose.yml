@@ -1,0 +1,44 @@
+# rag.jungholee.com — self-hosted via Cloudflare Tunnel.
+# Run on any always-on machine: `docker compose up -d --build`
+#
+# Reads two env files:
+#   ./.env          — compose-level vars (TUNNEL_TOKEN, VITE_* build args)   [see .env.example]
+#   ./backend/.env  — backend runtime secrets (Supabase keys, encryption key) [see backend/.env.example]
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: deploy/backend.Dockerfile
+    env_file:
+      - backend/.env
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/web.Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+        VITE_API_URL: ${VITE_API_URL}
+    depends_on:
+      - backend
+    expose:
+      - "8080"
+    restart: unless-stopped
+
+  # Cloudflare Tunnel: connects this machine to Cloudflare's edge with no public
+  # IP and no open ports. In the Zero Trust dashboard, map the public hostname
+  # rag.jungholee.com -> service http://web:8080 (cloudflared reaches `web` over
+  # this compose network).
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    depends_on:
+      - web
+    restart: unless-stopped

@@ -48,9 +48,12 @@ async def get_embeddings(texts: list[str], user_id: str | None = None) -> list[l
         api_key=emb_settings["api_key"],
     )
 
-    response = await client.embeddings.create(
-        model=model,
-        input=texts,
-        dimensions=dimensions,
-    )
+    create_kwargs: dict[str, Any] = {"model": model, "input": texts}
+    # `dimensions` is an OpenAI text-embedding-3-* feature; other providers
+    # (and many OpenAI-compatible gateways) reject it. Only send it when the
+    # configured model actually supports it, so non-OpenAI embedders work.
+    if model.startswith("text-embedding-3"):
+        create_kwargs["dimensions"] = dimensions
+
+    response = await client.embeddings.create(**create_kwargs)
     return [item.embedding for item in response.data]

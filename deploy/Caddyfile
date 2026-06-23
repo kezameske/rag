@@ -1,0 +1,22 @@
+# Caddy listens on plain HTTP :8080 — Cloudflare terminates TLS at the edge and
+# the tunnel carries traffic privately, so no certs are needed here.
+{
+	auto_https off
+	admin off
+}
+
+:8080 {
+	# API → FastAPI backend. handle_path strips the prefix: /api/threads -> /threads
+	handle_path /api/* {
+		reverse_proxy backend:8000 {
+			flush_interval -1   # stream SSE chat tokens immediately, no buffering
+		}
+	}
+
+	# Everything else → the built SPA, with client-side routing fallback
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
