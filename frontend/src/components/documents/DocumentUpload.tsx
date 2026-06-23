@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { uploadDocument } from '@/lib/api'
 
-const ALLOWED_EXTENSIONS = ['.txt', '.md', '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.html', '.csv']
+const ALLOWED_EXTENSIONS = ['.txt', '.md', '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.html', '.csv', '.png', '.jpg', '.jpeg', '.webp', '.gif']
 
 interface DocumentUploadProps {
   onUploadComplete: () => void
@@ -95,7 +95,7 @@ export function DocumentUpload({ onUploadComplete }: DocumentUploadProps) {
           id="file-upload"
           type="file"
           className="hidden"
-          accept=".txt,.md,.pdf,.docx,.doc,.xlsx,.xls,.html,.csv"
+          accept=".txt,.md,.pdf,.docx,.doc,.xlsx,.xls,.html,.csv,.png,.jpg,.jpeg,.webp,.gif"
           multiple
           onChange={handleFileInput}
           disabled={uploading}
@@ -118,7 +118,7 @@ export function DocumentUpload({ onUploadComplete }: DocumentUploadProps) {
             <>
               <p className="text-sm font-medium">Drop files here or click to upload</p>
               <p className="text-xs text-muted-foreground">
-                Supported: .txt, .md, .pdf, .docx, .xlsx, .html, .csv (max 50 MB)
+                Supported: .txt, .md, .pdf, .docx, .xlsx, .html, .csv, images (max 50 MB)
               </p>
             </>
           )}

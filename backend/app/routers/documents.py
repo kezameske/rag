@@ -19,9 +19,16 @@ ALLOWED_TYPES = {
     "application/vnd.ms-excel": ".xls",
     "text/html": ".html",
     "text/csv": ".csv",
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
     "application/octet-stream": None,  # fallback, check extension
 }
-ALLOWED_EXTENSIONS = {".txt", ".md", ".pdf", ".docx", ".doc", ".xlsx", ".xls", ".html", ".csv"}
+ALLOWED_EXTENSIONS = {
+    ".txt", ".md", ".pdf", ".docx", ".doc", ".xlsx", ".xls", ".html", ".csv",
+    ".png", ".jpg", ".jpeg", ".webp", ".gif",
+}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
 
@@ -99,6 +106,11 @@ async def upload_document(
         ".xls": "application/vnd.ms-excel",
         ".html": "text/html",
         ".csv": "text/csv",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
     }
     content_type = ext_to_content_type.get(ext, file.content_type or "text/plain")
 
@@ -148,6 +160,44 @@ async def list_documents(current_user: User = Depends(get_approved_user)):
     ).order("created_at", desc=True).execute()
 
     return result.data
+
+
+@router.get("/chunks/{chunk_id}/image-url")
+async def get_chunk_image_url(
+    chunk_id: str,
+    current_user: User = Depends(get_approved_user),
+):
+    """Return a short-lived signed URL for a retrieved image chunk's source image.
+
+    The service-role client bypasses RLS, so the explicit user_id filter below is
+    the access check. The signed URL is short-lived and resolved fresh each call.
+    """
+    supabase = get_supabase_client()
+    result = supabase.table("chunks").select("metadata").eq(
+        "id", chunk_id
+    ).eq("user_id", current_user.id).maybe_single().execute()
+
+    if not result or not result.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chunk not found")
+
+    image_path = (result.data.get("metadata") or {}).get("image_path")
+    if not image_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No image for this chunk")
+
+    try:
+        signed = supabase.storage.from_("documents").create_signed_url(image_path, 300)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+    url = None
+    if isinstance(signed, dict):
+        url = signed.get("signedURL") or signed.get("signedUrl") or signed.get("signed_url")
+    if not url:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not create signed URL",
+        )
+    return {"url": url}
 
 
 @router.delete("/{document_id}")

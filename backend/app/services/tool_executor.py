@@ -35,6 +35,8 @@ async def execute_tool_call(tool_call: dict, user_id: str) -> str:
         for r in results:
             meta = r.get("metadata", {}) or {}
             filename = meta.get("filename", "unknown")
+            ctype = meta.get("content_type", "text")
+            page = meta.get("page_number")
             # Prefer the reranker's 0-10 relevance; fall back to the hybrid/vector
             # score. Use .get() so a missing key never raises a KeyError, and
             # avoid mislabeling the hybrid RPC's RRF value as "similarity".
@@ -44,7 +46,11 @@ async def execute_tool_call(tool_call: dict, user_id: str) -> str:
             else:
                 score_str = f"score: {r.get('similarity', r.get('rrf_score', 0.0)):.3f}"
             doc_id = r.get("document_id", "")
-            source = f"[Source: {filename}"
+            # Image chunks carry a vision-model caption as their content; flag them
+            # so the model knows the source is an image/figure (and can cite it).
+            label = "Image" if ctype == "image" else "Source"
+            loc = f", page {page + 1}" if isinstance(page, int) else ""
+            source = f"[{label}: {filename}{loc}"
             if doc_id:
                 source += f" | doc:{doc_id}"
             source += f" | {score_str}]"

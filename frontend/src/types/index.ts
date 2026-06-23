@@ -41,6 +41,7 @@ export interface Document {
   error_message: string | null
   content_hash: string | null
   chunk_count: number
+  has_images?: boolean
   extracted_metadata: DocumentMetadata | null
   metadata_status: string | null
   created_at: string
