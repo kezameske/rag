@@ -19,7 +19,7 @@ class ThreadUpdate(BaseModel):
 
 
 class MessageCreate(BaseModel):
-    content: str
+    content: str | list[dict]
 
 
 class MessageResponse(BaseModel):
@@ -27,7 +27,7 @@ class MessageResponse(BaseModel):
     thread_id: str
     user_id: str
     role: str
-    content: str
+    content: str | list[dict]
     tool_calls: list | None = None
     created_at: datetime
 
@@ -43,6 +43,7 @@ class DocumentResponse(BaseModel):
     error_message: str | None = None
     content_hash: str | None = None
     chunk_count: int = 0
+    has_images: bool = False
     extracted_metadata: dict | None = None
     metadata_status: str | None = None
     created_at: datetime
