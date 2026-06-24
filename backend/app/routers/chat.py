@@ -102,6 +102,7 @@ async def send_message(
         current_messages = list(messages)
         rounds = 0
         tool_calls_log = []  # Track tool calls for saving
+        collected_sources = []  # Structured citations for the frontend + persistence
 
         try:
             while rounds < MAX_TOOL_ROUNDS:
@@ -164,7 +165,7 @@ async def send_message(
                                     "result": sub_result[:500],
                                 })
                             else:
-                                result = await execute_tool_call(tc, current_user.id)
+                                result, sources = await execute_tool_call(tc, current_user.id)
                                 current_messages.append({
                                     "role": "tool",
                                     "tool_call_id": tc["id"],
@@ -175,6 +176,9 @@ async def send_message(
                                     "arguments": tc["arguments"],
                                     "result": result[:500],
                                 })
+                                if sources:
+                                    collected_sources.extend(sources)
+                                    yield f"event: sources\ndata: {json.dumps({'sources': sources})}\n\n"
 
                         # Continue the loop to call LLM again
                         break
@@ -191,6 +195,8 @@ async def send_message(
                             }
                             if tool_calls_log:
                                 msg_data["tool_calls"] = tool_calls_log
+                            if collected_sources:
+                                msg_data["sources"] = collected_sources
 
                             supabase.table("messages").insert(msg_data).execute()
 
@@ -218,6 +224,8 @@ async def send_message(
                 }
                 if tool_calls_log:
                     msg_data["tool_calls"] = tool_calls_log
+                if collected_sources:
+                    msg_data["sources"] = collected_sources
                 supabase.table("messages").insert(msg_data).execute()
             yield f"event: done\ndata: {{}}\n\n"
 

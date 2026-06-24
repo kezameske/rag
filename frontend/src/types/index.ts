@@ -13,6 +13,7 @@ export interface Message {
   role: 'user' | 'assistant'
   content: string
   tool_calls?: ToolCall[] | null
+  sources?: Source[] | null
   created_at: string
 }
 
@@ -20,6 +21,16 @@ export interface ToolCall {
   name: string
   arguments: string
   result?: string
+}
+
+export interface Source {
+  chunk_id: string
+  document_id: string | null
+  filename: string
+  content_type: 'text' | 'image'
+  page_number: number | null
+  has_image: boolean
+  snippet: string
 }
 
 export interface DocumentMetadata {
