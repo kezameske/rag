@@ -2,16 +2,21 @@ export interface Thread {
   id: string
   user_id: string
   title: string
+  scope?: string
   created_at: string
   updated_at: string
 }
+
+export type MessageContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
 
 export interface Message {
   id: string
   thread_id: string
   user_id: string
   role: 'user' | 'assistant'
-  content: string
+  content: string | MessageContentPart[]
   tool_calls?: ToolCall[] | null
   sources?: Source[] | null
   created_at: string

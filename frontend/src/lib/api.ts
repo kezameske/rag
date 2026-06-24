@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { Thread, Message, Document, Source } from '@/types'
+import type { Thread, Message, Document, Source, MessageContentPart } from '@/types'
 
 const API_URL = import.meta.env.VITE_API_URL
 
@@ -58,6 +58,13 @@ export async function updateThread(threadId: string, title: string): Promise<Thr
   })
 }
 
+export async function updateThreadScope(threadId: string, scope: string): Promise<Thread> {
+  return fetchApi<Thread>(`/threads/${threadId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ scope }),
+  })
+}
+
 export async function deleteThread(threadId: string): Promise<void> {
   const headers = await getAuthHeaders()
   const response = await fetch(`${API_URL}/threads/${threadId}`, {
@@ -78,7 +85,7 @@ export async function getMessages(threadId: string): Promise<Message[]> {
 
 export interface SendMessageOptions {
   threadId: string
-  content: string
+  content: string | MessageContentPart[]
   onTextDelta: (text: string) => void
   onDone: () => void
   onError: (error: string) => void

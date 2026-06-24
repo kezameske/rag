@@ -4,18 +4,21 @@ from datetime import datetime
 
 class ThreadCreate(BaseModel):
     title: str | None = "New Chat"
+    scope: str | None = "personal"
 
 
 class ThreadResponse(BaseModel):
     id: str
     user_id: str
     title: str
+    scope: str = "personal"
     created_at: datetime
     updated_at: datetime
 
 
 class ThreadUpdate(BaseModel):
-    title: str
+    title: str | None = None
+    scope: str | None = None
 
 
 class MessageCreate(BaseModel):
