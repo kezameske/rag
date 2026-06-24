@@ -1,10 +1,14 @@
-"""Hybrid search via match_chunks_hybrid RPC with HyDE query transformation and reranking."""
+"""Hybrid search via match_chunks_hybrid RPC with HyDE, reranking, and corrective retrieval."""
 import json
 import logging
 from app.db.supabase import get_supabase_client
 from app.services.embedding_service import get_embeddings
 
 logger = logging.getLogger(__name__)
+
+# Corrective-RAG: if the best reranked score is below this (0-10), rewrite the
+# query and search again; if it's still below, return nothing (honest "not found").
+CRAG_RERANK_CUTOFF = 5.0
 
 
 def _should_use_hyde(query: str, metadata_filter: dict | None) -> bool:
@@ -19,6 +23,12 @@ def _should_use_hyde(query: str, metadata_filter: dict | None) -> bool:
     if len(query.split()) < 5:
         return False
     return True
+
+
+def _best_rerank(candidates: list[dict]) -> float | None:
+    """Best reranker score among candidates, or None if reranking didn't run."""
+    scores = [c.get("rerank_score") for c in candidates if c.get("rerank_score") is not None]
+    return max(scores) if scores else None
 
 
 async def _expand_with_neighbors(
@@ -75,40 +85,20 @@ async def _expand_with_neighbors(
     return chunks
 
 
-async def search_documents(
+async def _retrieve_once(
     query: str,
     user_id: str,
-    top_k: int = 15,
-    threshold: float = 0.3,
-    metadata_filter: dict | None = None,
+    top_k: int,
+    threshold: float,
+    metadata_filter: dict | None,
 ) -> list[dict]:
-    """
-    Search user's documents using HyDE + hybrid search (vector + FTS with RRF) + reranking.
-
-    Pipeline:
-    1. HyDE: Generate hypothetical answer passage, embed that for vector search
-    2. Hybrid: Run vector + full-text search in parallel, combine with RRF
-    3. Rerank: LLM scores relevance of candidates, returns top_k
-
-    Falls back gracefully if any stage fails.
-
-    Args:
-        query: Search query text
-        user_id: The user's ID for RLS filtering
-        top_k: Maximum number of results
-        threshold: Minimum similarity threshold (used in fallback only)
-        metadata_filter: Optional JSONB filter for document metadata
-
-    Returns:
-        List of matching chunks with similarity scores
-    """
+    """One retrieval pass: HyDE (gated) -> hybrid (vector+FTS, RRF) -> rerank."""
     # Step 1: HyDE query transformation (gated — skip for short/keyword/filtered queries)
     search_text = query  # Keep original for FTS
     if _should_use_hyde(query, metadata_filter):
         try:
             from app.services.query_transform_service import hyde_transform
             hypothetical = await hyde_transform(query)
-            # Embed the hypothetical passage instead of the raw query
             query_embedding = await get_embeddings([hypothetical], user_id=user_id)
             logger.info("Using HyDE-transformed query for vector search")
         except Exception as e:
@@ -119,25 +109,20 @@ async def search_documents(
         query_embedding = await get_embeddings([query], user_id=user_id)
 
     supabase = get_supabase_client()
-
-    # Build metadata filter param
     meta_param = json.dumps(metadata_filter) if metadata_filter else None
 
     # Step 2: Hybrid search (vector + FTS combined with RRF)
     try:
         result = supabase.rpc("match_chunks_hybrid", {
             "query_embedding": query_embedding[0],
-            "query_text": search_text,  # Original query for FTS keyword matching
-            "match_count": top_k * 2,   # Fetch extra for reranking
+            "query_text": search_text,
+            "match_count": top_k * 2,
             "p_user_id": user_id,
             "p_metadata_filter": meta_param,
         }).execute()
-
         candidates = result.data or []
-
     except Exception as e:
         logger.warning(f"Hybrid search failed, falling back to vector search: {e}")
-        # Fallback to vector-only search
         result = supabase.rpc("match_chunks", {
             "query_embedding": query_embedding[0],
             "match_threshold": threshold,
@@ -158,7 +143,45 @@ async def search_documents(
     else:
         candidates = candidates[:top_k]
 
-    # Step 4: Parent-document expansion — stitch neighbors for fuller context
+    return candidates
+
+
+async def search_documents(
+    query: str,
+    user_id: str,
+    top_k: int = 15,
+    threshold: float = 0.3,
+    metadata_filter: dict | None = None,
+    corrective: bool = False,
+) -> list[dict]:
+    """
+    Search a user's documents: HyDE + hybrid + rerank, then parent-document expansion.
+
+    When `corrective` (the router's 'iterative' route), apply Corrective-RAG: if
+    the best reranked result is weak, rewrite the query and search again; if it's
+    still weak, return nothing so the model can say it honestly.
+    """
+    candidates = await _retrieve_once(query, user_id, top_k, threshold, metadata_filter)
+
+    if corrective:
+        best = _best_rerank(candidates)
+        if best is not None and best < CRAG_RERANK_CUTOFF:
+            logger.info(f"CRAG: weak results (best={best:.1f}); rewriting query")
+            try:
+                from app.services.query_transform_service import rewrite_query
+                rewritten = await rewrite_query(query)
+                if rewritten and rewritten.lower() != query.lower():
+                    alt = await _retrieve_once(rewritten, user_id, top_k, threshold, metadata_filter)
+                    alt_best = _best_rerank(alt)
+                    if alt_best is not None and alt_best > best:
+                        candidates, best = alt, alt_best
+            except Exception as e:
+                logger.warning(f"Corrective rewrite failed: {e}")
+            if best is not None and best < CRAG_RERANK_CUTOFF:
+                logger.info("CRAG: still weak after rewrite -> returning no results")
+                return []
+
+    # Parent-document expansion — stitch neighbors for fuller context
     try:
         candidates = await _expand_with_neighbors(candidates, user_id, window=1)
     except Exception as e:

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -9,12 +10,27 @@ from app.db.supabase import get_supabase_client
 from app.models.schemas import MessageCreate, MessageResponse
 from app.services.llm_service import astream_chat_response, get_available_tools
 from app.services.tool_executor import execute_tool_call
+from app.services.memory_service import build_memory_context, extract_and_store_memories
+from app.services.router_service import classify_query
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/threads/{thread_id}", tags=["chat"])
 
 MAX_TOOL_ROUNDS = 5
+
+
+def _content_to_text(content) -> str:
+    """Extract the plain-text portion of a message content (string or parts list)."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            p.get("text", "")
+            for p in content
+            if isinstance(p, dict) and p.get("type") == "text"
+        )
+    return ""
 
 
 async def verify_thread_access(thread_id: str, user_id: str) -> dict:
@@ -69,7 +85,8 @@ async def send_message(
     current_user: User = Depends(get_approved_user)
 ):
     """Send a message and stream the assistant's response via SSE."""
-    await verify_thread_access(thread_id, current_user.id)
+    thread = await verify_thread_access(thread_id, current_user.id)
+    scope = thread.get("scope") or "personal"
     supabase = get_supabase_client()
 
     # Store user message in database
@@ -91,15 +108,26 @@ async def send_message(
     # Get full message history for context
     messages = get_thread_messages(thread_id)
 
-    # Get tools dynamically based on user state
+    # Long-term memory: recall relevant memories for this query (scope-filtered)
+    query_text = _content_to_text(message_data.content)
+    memory_context = await build_memory_context(current_user.id, query_text, scope)
+
+    # Adaptive router: gate retrieval by query type (none/simple/iterative)
     has_docs = user_has_documents(current_user.id)
-    tools = get_available_tools(has_docs)
-    logger.info(f"Chat: user={current_user.id}, has_docs={has_docs}, tools={len(tools) if tools else 0}")
+    route = await classify_query(query_text, has_docs)
+    tools = get_available_tools(has_docs) if route != "none" else None
+    corrective = route == "iterative"
+    logger.info(
+        f"Chat: user={current_user.id}, has_docs={has_docs}, route={route}, "
+        f"tools={len(tools) if tools else 0}"
+    )
 
     async def generate():
         """Generate SSE events with tool-calling loop."""
         full_response = ""
         current_messages = list(messages)
+        if memory_context:
+            current_messages.insert(0, {"role": "system", "content": memory_context})
         rounds = 0
         tool_calls_log = []  # Track tool calls for saving
         collected_sources = []  # Structured citations for the frontend + persistence
@@ -165,7 +193,7 @@ async def send_message(
                                     "result": sub_result[:500],
                                 })
                             else:
-                                result, sources = await execute_tool_call(tc, current_user.id)
+                                result, sources = await execute_tool_call(tc, current_user.id, corrective=corrective)
                                 current_messages.append({
                                     "role": "tool",
                                     "tool_call_id": tc["id"],
@@ -205,6 +233,13 @@ async def send_message(
                                 "updated_at": datetime.now(timezone.utc).isoformat()
                             }).eq("id", thread_id).execute()
 
+                            # Extract durable memories from this exchange (background)
+                            asyncio.create_task(
+                                extract_and_store_memories(
+                                    current_user.id, scope, query_text, full_response
+                                )
+                            )
+
                         yield f"event: done\ndata: {{}}\n\n"
                         return  # Done, exit the generator
 
@@ -227,6 +262,11 @@ async def send_message(
                 if collected_sources:
                     msg_data["sources"] = collected_sources
                 supabase.table("messages").insert(msg_data).execute()
+                asyncio.create_task(
+                    extract_and_store_memories(
+                        current_user.id, scope, query_text, full_response
+                    )
+                )
             yield f"event: done\ndata: {{}}\n\n"
 
         except Exception as e:

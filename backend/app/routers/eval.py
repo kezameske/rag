@@ -6,6 +6,7 @@ from app.dependencies import get_admin_user, User
 from app.services.eval_service import (
     run_eval,
     auto_generate_eval_cases,
+    run_generation_eval,
     EvalCase,
 )
 
@@ -41,6 +42,18 @@ async def run_evaluation(
         "mrr": round(summary.mrr, 3),
         "results": [asdict(r) for r in summary.results],
     }
+
+
+@router.post("/generation")
+async def run_generation_evaluation(
+    current_user: User = Depends(get_admin_user),
+):
+    """
+    End-to-end answer-quality eval: auto-generate questions, retrieve, answer from
+    context, then judge faithfulness / answer_relevance / groundedness (0-2 each).
+    Admin-only.
+    """
+    return await run_generation_eval(current_user.id, max_cases=5)
 
 
 @router.post("/run-custom")
