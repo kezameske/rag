@@ -29,6 +29,7 @@ async def create_thread(
     result = supabase.table("threads").insert({
         "user_id": current_user.id,
         "title": thread_data.title or "New Chat",
+        "scope": thread_data.scope or "personal",
         "created_at": now,
         "updated_at": now,
     }).execute()
@@ -77,10 +78,13 @@ async def update_thread(
             detail="Thread not found"
         )
 
-    result = supabase.table("threads").update({
-        "title": thread_data.title,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("id", thread_id).execute()
+    update_fields = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    if thread_data.title is not None:
+        update_fields["title"] = thread_data.title
+    if thread_data.scope is not None:
+        update_fields["scope"] = thread_data.scope
+
+    result = supabase.table("threads").update(update_fields).eq("id", thread_id).execute()
 
     return result.data[0]
 

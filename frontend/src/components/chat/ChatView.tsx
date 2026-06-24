@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, Square, ChevronDown, ChevronRight, Search } from 'lucide-react'
+import { Send, Square, ChevronDown, ChevronRight, Search, Paperclip, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
-import { getMessages, sendMessage, updateThread, getChunkImageUrl } from '@/lib/api'
-import type { Message, Source } from '@/types'
+import { getMessages, sendMessage, updateThread, updateThreadScope, getThread, getChunkImageUrl } from '@/lib/api'
+import type { Message, Source, MessageContentPart } from '@/types'
 
 interface ChatViewProps {
   threadId: string
@@ -100,6 +100,48 @@ function Citations({ sources }: { sources?: Source[] | null }) {
   )
 }
 
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+function textOf(content: string | MessageContentPart[]): string {
+  if (typeof content === 'string') return content
+  return content
+    .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+    .map((p) => p.text)
+    .join('\n')
+}
+
+function imagesOf(content: string | MessageContentPart[]): string[] {
+  if (typeof content === 'string') return []
+  return content
+    .filter((p): p is { type: 'image_url'; image_url: { url: string } } => p.type === 'image_url')
+    .map((p) => p.image_url.url)
+}
+
+// Renders a user message: attached image thumbnails + text.
+function UserContent({ content }: { content: string | MessageContentPart[] }) {
+  const text = textOf(content)
+  const images = imagesOf(content)
+  return (
+    <div className="space-y-2">
+      {images.length > 0 && (
+        <div className="flex flex-wrap justify-end gap-2">
+          {images.map((url, i) => (
+            <SafeImg key={i} src={url} alt="attachment" />
+          ))}
+        </div>
+      )}
+      {text && <p className="whitespace-pre-wrap">{text}</p>}
+    </div>
+  )
+}
+
 export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -108,6 +150,8 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
   const [waiting, setWaiting] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
   const [streamingSources, setStreamingSources] = useState<Source[]>([])
+  const [attachedImages, setAttachedImages] = useState<string[]>([])
+  const [scope, setScope] = useState<string>('personal')
   const [error, setError] = useState<string | null>(null)
   const [subAgent, setSubAgent] = useState<SubAgentState>({
     active: false, thinking: '', result: '', collapsed: false,
@@ -116,6 +160,7 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
   const abortControllerRef = useRef<AbortController | null>(null)
   const initialMessageSentRef = useRef(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -151,8 +196,16 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
     return () => { cancelled = true }
   }, [threadId])
 
-  const doSend = async (userMessage: string) => {
-    if (!userMessage.trim() || sending) return
+  useEffect(() => {
+    getThread(threadId)
+      .then((t) => setScope(t.scope || 'personal'))
+      .catch(() => {})
+  }, [threadId])
+
+  const doSend = async (content: string | MessageContentPart[]) => {
+    const text = textOf(content)
+    const hasImages = imagesOf(content).length > 0
+    if ((!text.trim() && !hasImages) || sending) return
 
     const isFirstMessage = messages.length === 0
     setSending(true)
@@ -169,15 +222,15 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
       thread_id: threadId,
       user_id: '',
       role: 'user',
-      content: userMessage,
+      content,
       created_at: new Date().toISOString(),
     }
     setMessages(prev => [...prev, tempUserMessage])
 
     if (isFirstMessage && onThreadTitleUpdate) {
-      const title = userMessage.length > 50
-        ? userMessage.substring(0, 47) + '...'
-        : userMessage
+      const title = text.length > 50
+        ? text.substring(0, 47) + '...'
+        : (text || 'Image')
       try {
         await updateThread(threadId, title)
         onThreadTitleUpdate(threadId, title)
@@ -189,7 +242,7 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
     try {
       await sendMessage({
         threadId,
-        content: userMessage,
+        content,
         onTextDelta: (text) => {
           setWaiting(false)
           setStreamingContent(prev => prev + text)
@@ -248,13 +301,20 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || sending) return
-    const userMessage = input.trim()
+    const text = input.trim()
+    if ((!text && attachedImages.length === 0) || sending) return
+    const content: string | MessageContentPart[] = attachedImages.length > 0
+      ? [
+          ...(text ? [{ type: 'text', text } as MessageContentPart] : []),
+          ...attachedImages.map((url) => ({ type: 'image_url', image_url: { url } }) as MessageContentPart),
+        ]
+      : text
     setInput('')
+    setAttachedImages([])
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
-    await doSend(userMessage)
+    await doSend(content)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -271,6 +331,29 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
     el.style.height = Math.min(el.scrollHeight, 160) + 'px'
   }
 
+  const addImageFiles = async (files: FileList | File[]) => {
+    const imgs = Array.from(files).filter((f) => f.type.startsWith('image/'))
+    for (const f of imgs) {
+      try {
+        const url = await fileToDataUrl(f)
+        setAttachedImages((prev) => [...prev, url])
+      } catch {
+        // ignore unreadable file
+      }
+    }
+  }
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const files = Array.from(e.clipboardData.items)
+      .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
+      .map((it) => it.getAsFile())
+      .filter((f): f is File => f !== null)
+    if (files.length > 0) {
+      e.preventDefault()
+      addImageFiles(files)
+    }
+  }
+
   useEffect(() => {
     if (!loading && initialMessage && !initialMessageSentRef.current) {
       initialMessageSentRef.current = true
@@ -283,6 +366,12 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
       abortControllerRef.current.abort()
       abortControllerRef.current = null
     }
+  }
+
+  const handleScopeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value
+    setScope(value)
+    updateThreadScope(threadId, value).catch((err) => console.error('Failed to set scope:', err))
   }
 
   useEffect(() => {
@@ -319,6 +408,20 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
 
   return (
     <div className="flex h-full flex-col">
+      {/* Scope selector */}
+      <div className="flex items-center justify-end gap-2 border-b border-border px-6 py-2">
+        <span className="text-xs text-muted-foreground">Memory</span>
+        <select
+          value={scope}
+          onChange={handleScopeChange}
+          className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground focus:outline-none"
+        >
+          <option value="personal">Personal</option>
+          <option value="work">Work</option>
+          <option value="shared">Shared</option>
+        </select>
+      </div>
+
       {/* Messages area */}
       <div className="chat-scroll flex-1 overflow-y-auto">
         {messages.length === 0 && !streamingContent && !waiting && !error ? (
@@ -350,7 +453,7 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
                           color: 'hsl(var(--user-bubble-fg))',
                         }}
                       >
-                        <p className="whitespace-pre-wrap">{message.content}</p>
+                        <UserContent content={message.content} />
                       </div>
                     </div>
                   ) : (
@@ -377,7 +480,7 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
                         </div>
                         <div className="prose prose-neutral dark:prose-invert max-w-none text-[15px] leading-relaxed prose-p:my-2 prose-headings:mt-4 prose-headings:mb-2 prose-pre:bg-secondary prose-pre:border prose-pre:border-border prose-code:text-primary prose-code:font-medium">
                           <ReactMarkdown components={{ img: SafeImg as any }} remarkPlugins={[remarkGfm]}>
-                            {message.content}
+                            {textOf(message.content)}
                           </ReactMarkdown>
                         </div>
                       </div>
@@ -529,48 +632,102 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
         <div className="mx-auto max-w-3xl">
           <form onSubmit={handleSubmit}>
             <div
-              className="chat-input-container flex items-end gap-3 rounded-2xl px-5 py-4 cursor-text"
+              className="chat-input-container rounded-2xl px-5 py-4 cursor-text"
               onClick={() => textareaRef.current?.focus()}
             >
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={handleTextareaInput}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask anything..."
-                disabled={sending}
-                rows={1}
-                className="flex-1 resize-none bg-transparent text-[15px] leading-relaxed placeholder:text-muted-foreground/60 focus:outline-none disabled:opacity-50"
-                style={{ minHeight: 28, maxHeight: 160 }}
-              />
-              {sending ? (
+              {attachedImages.length > 0 && (
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {attachedImages.map((url, i) => (
+                    <div key={i} className="relative">
+                      <img
+                        src={url}
+                        alt="attachment"
+                        className="h-16 w-16 rounded-lg border border-border object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setAttachedImages((prev) => prev.filter((_, j) => j !== i))
+                        }}
+                        className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-white"
+                        title="Remove"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-end gap-3">
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files) {
+                      addImageFiles(e.target.files)
+                      e.target.value = ''
+                    }
+                  }}
+                />
                 <Button
                   type="button"
                   size="icon"
-                  className="h-9 w-9 shrink-0 rounded-xl transition-all hover:scale-105"
-                  onClick={handleStop}
-                  title="Stop generating"
-                  style={{
-                    background: 'hsl(var(--destructive))',
-                    color: 'white',
+                  className="h-9 w-9 shrink-0 rounded-xl"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    imageInputRef.current?.click()
                   }}
+                  disabled={sending}
+                  title="Attach image"
+                  style={{ background: 'transparent', color: 'hsl(var(--muted-foreground))' }}
                 >
-                  <Square className="h-3.5 w-3.5" />
+                  <Paperclip className="h-4 w-4" />
                 </Button>
-              ) : (
-                <Button
-                  type="submit"
-                  size="icon"
-                  className="h-9 w-9 shrink-0 rounded-xl transition-all hover:scale-105"
-                  disabled={!input.trim()}
-                  style={{
-                    background: input.trim() ? 'hsl(var(--primary))' : 'hsl(var(--muted))',
-                    color: input.trim() ? 'white' : 'hsl(var(--muted-foreground))',
-                  }}
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              )}
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={handleTextareaInput}
+                  onKeyDown={handleKeyDown}
+                  onPaste={handlePaste}
+                  placeholder="Ask anything..."
+                  disabled={sending}
+                  rows={1}
+                  className="flex-1 resize-none bg-transparent text-[15px] leading-relaxed placeholder:text-muted-foreground/60 focus:outline-none disabled:opacity-50"
+                  style={{ minHeight: 28, maxHeight: 160 }}
+                />
+                {sending ? (
+                  <Button
+                    type="button"
+                    size="icon"
+                    className="h-9 w-9 shrink-0 rounded-xl transition-all hover:scale-105"
+                    onClick={handleStop}
+                    title="Stop generating"
+                    style={{
+                      background: 'hsl(var(--destructive))',
+                      color: 'white',
+                    }}
+                  >
+                    <Square className="h-3.5 w-3.5" />
+                  </Button>
+                ) : (
+                  <Button
+                    type="submit"
+                    size="icon"
+                    className="h-9 w-9 shrink-0 rounded-xl transition-all hover:scale-105"
+                    disabled={!input.trim() && attachedImages.length === 0}
+                    style={{
+                      background: (input.trim() || attachedImages.length > 0) ? 'hsl(var(--primary))' : 'hsl(var(--muted))',
+                      color: (input.trim() || attachedImages.length > 0) ? 'white' : 'hsl(var(--muted-foreground))',
+                    }}
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
             </div>
           </form>
         </div>
