@@ -11,6 +11,7 @@ from app.models.schemas import MessageCreate, MessageResponse
 from app.services.llm_service import astream_chat_response, get_available_tools
 from app.services.tool_executor import execute_tool_call
 from app.services.memory_service import build_memory_context, extract_and_store_memories
+from app.services.router_service import classify_query
 
 logger = logging.getLogger(__name__)
 
@@ -111,10 +112,15 @@ async def send_message(
     query_text = _content_to_text(message_data.content)
     memory_context = await build_memory_context(current_user.id, query_text, scope)
 
-    # Get tools dynamically based on user state
+    # Adaptive router: gate retrieval by query type (none/simple/iterative)
     has_docs = user_has_documents(current_user.id)
-    tools = get_available_tools(has_docs)
-    logger.info(f"Chat: user={current_user.id}, has_docs={has_docs}, tools={len(tools) if tools else 0}")
+    route = await classify_query(query_text, has_docs)
+    tools = get_available_tools(has_docs) if route != "none" else None
+    corrective = route == "iterative"
+    logger.info(
+        f"Chat: user={current_user.id}, has_docs={has_docs}, route={route}, "
+        f"tools={len(tools) if tools else 0}"
+    )
 
     async def generate():
         """Generate SSE events with tool-calling loop."""
@@ -187,7 +193,7 @@ async def send_message(
                                     "result": sub_result[:500],
                                 })
                             else:
-                                result, sources = await execute_tool_call(tc, current_user.id)
+                                result, sources = await execute_tool_call(tc, current_user.id, corrective=corrective)
                                 current_messages.append({
                                     "role": "tool",
                                     "tool_call_id": tc["id"],

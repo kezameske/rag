@@ -124,3 +124,33 @@ async def expand_query(query: str) -> list[str]:
     all_queries = [query] + reformulations[:2]
     logger.info(f"Query expansion: {len(all_queries)} queries from '{query[:50]}'")
     return all_queries
+
+
+async def rewrite_query(query: str) -> str:
+    """Rewrite a query whose initial results were weak (Corrective-RAG)."""
+    llm_settings = _get_llm_settings()
+    client = get_traced_async_openai_client(
+        base_url=llm_settings["base_url"],
+        api_key=llm_settings["api_key"],
+    )
+
+    response = await client.chat.completions.create(
+        model=llm_settings["model"],
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "The user's search query returned weak results. Rewrite it to be "
+                    "clearer and more likely to match relevant document passages. "
+                    "Keep the same intent. Return ONLY the rewritten query."
+                ),
+            },
+            {"role": "user", "content": query},
+        ],
+        max_tokens=60,
+        temperature=0.0,
+    )
+
+    rewritten = (response.choices[0].message.content or query).strip()
+    logger.info(f"Query rewrite: '{query[:40]}' -> '{rewritten[:40]}'")
+    return rewritten

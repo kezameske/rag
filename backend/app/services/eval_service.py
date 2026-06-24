@@ -240,3 +240,135 @@ async def auto_generate_eval_cases(user_id: str, max_cases: int = 10) -> list[Ev
 
     logger.info(f"Generated {len(eval_cases)} eval cases from {len(sampled)} chunks")
     return eval_cases
+
+
+# ---------------------------------------------------------------------------
+# Reference-free generation evaluation (faithfulness / relevance / groundedness).
+# Off the hot path — admin eval endpoint only. Raw LLM-as-judge, no RAGAS.
+# ---------------------------------------------------------------------------
+
+def _get_eval_client():
+    """Build an LLM client + model from global settings for answering/judging."""
+    from app.services.langsmith import get_traced_async_openai_client
+    from app.routers.settings import decrypt_value
+
+    supabase = get_supabase_client()
+    settings = supabase.table("global_settings").select(
+        "llm_model, llm_base_url, llm_api_key"
+    ).limit(1).maybe_single().execute()
+    data = settings.data if settings else None
+    api_key = decrypt_value(data.get("llm_api_key")) if data else None
+    if not api_key:
+        raise ValueError("LLM not configured")
+    client = get_traced_async_openai_client(
+        base_url=data.get("llm_base_url") or None, api_key=api_key,
+    )
+    return client, data.get("llm_model") or "gpt-4o"
+
+
+async def _generate_answer(question: str, context: str) -> str:
+    """Answer a question strictly from the provided context (one LLM call)."""
+    client, model = _get_eval_client()
+    response = await client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": (
+                "Answer the question using ONLY the provided context. If the context "
+                "does not contain the answer, say you don't have enough information."
+            )},
+            {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"},
+        ],
+        max_tokens=300,
+        temperature=0.0,
+    )
+    return (response.choices[0].message.content or "").strip()
+
+
+async def judge_generation(question: str, context: str, answer: str) -> dict:
+    """Reference-free LLM-as-judge scores (0-2 each) for a generated answer."""
+    client, model = _get_eval_client()
+    response = await client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": (
+                "You are a strict evaluator of RAG answers. Score 0-2 on each axis:\n"
+                "- faithfulness: are the answer's claims supported by the context? "
+                "(0 contradicts, 1 partly, 2 fully supported)\n"
+                "- answer_relevance: does the answer address the question? "
+                "(0 off-topic, 1 partial, 2 directly answers)\n"
+                "- groundedness: is the answer free of unsupported/hallucinated claims? "
+                "(0 hallucinated, 1 some, 2 fully grounded)\n"
+                "Add a one-sentence rationale."
+            )},
+            {"role": "user", "content": (
+                f"Question:\n{question}\n\nContext:\n{context}\n\nAnswer:\n{answer}"
+            )},
+        ],
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "generation_score",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "faithfulness": {"type": "integer"},
+                        "answer_relevance": {"type": "integer"},
+                        "groundedness": {"type": "integer"},
+                        "rationale": {"type": "string"},
+                    },
+                    "required": ["faithfulness", "answer_relevance", "groundedness", "rationale"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        max_tokens=200,
+        temperature=0.0,
+    )
+    return json.loads(response.choices[0].message.content)
+
+
+async def run_generation_eval(user_id: str, max_cases: int = 5) -> dict:
+    """End-to-end answer-quality eval: auto questions -> retrieve -> answer -> judge."""
+    cases = await auto_generate_eval_cases(user_id, max_cases=max_cases)
+    if not cases:
+        return {"error": "No documents found to generate eval cases.", "results": []}
+
+    results = []
+    for case in cases:
+        chunks = await search_documents(case.question, user_id, top_k=5)
+        context = "\n\n".join(c.get("content", "") for c in chunks)
+        if not context.strip():
+            answer = "I don't have enough information."
+            score = {
+                "faithfulness": 2, "answer_relevance": 0, "groundedness": 2,
+                "rationale": "No context retrieved.",
+            }
+        else:
+            answer = await _generate_answer(case.question, context)
+            try:
+                score = await judge_generation(case.question, context, answer)
+            except Exception as e:
+                logger.warning(f"Judge failed: {e}")
+                continue
+        results.append({
+            "question": case.question,
+            "answer": answer,
+            "retrieved": len(chunks),
+            "faithfulness": score.get("faithfulness"),
+            "answer_relevance": score.get("answer_relevance"),
+            "groundedness": score.get("groundedness"),
+            "rationale": score.get("rationale"),
+        })
+
+    def _avg(key: str) -> float:
+        vals = [r[key] for r in results if isinstance(r.get(key), int)]
+        return round(sum(vals) / len(vals), 2) if vals else 0.0
+
+    return {
+        "total_cases": len(results),
+        "avg_faithfulness": _avg("faithfulness"),
+        "avg_answer_relevance": _avg("answer_relevance"),
+        "avg_groundedness": _avg("groundedness"),
+        "results": results,
+    }

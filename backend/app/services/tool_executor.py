@@ -6,7 +6,7 @@ from app.services.retrieval_service import search_documents
 logger = logging.getLogger(__name__)
 
 
-async def execute_tool_call(tool_call: dict, user_id: str) -> tuple[str, list]:
+async def execute_tool_call(tool_call: dict, user_id: str, corrective: bool = False) -> tuple[str, list]:
     """
     Execute a tool call.
 
@@ -23,7 +23,7 @@ async def execute_tool_call(tool_call: dict, user_id: str) -> tuple[str, list]:
         filters = arguments.get("filters")
         metadata_filter = filters if isinstance(filters, dict) else None
 
-        results = await search_documents(query, user_id, metadata_filter=metadata_filter)
+        results = await search_documents(query, user_id, metadata_filter=metadata_filter, corrective=corrective)
 
         if not results:
             return "No relevant documents found.", []
