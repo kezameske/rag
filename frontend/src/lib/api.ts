@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { Thread, Message, Document } from '@/types'
+import type { Thread, Message, Document, Source } from '@/types'
 
 const API_URL = import.meta.env.VITE_API_URL
 
@@ -85,13 +85,14 @@ export interface SendMessageOptions {
   onSubAgentStart?: (data: { document_id: string; query: string }) => void
   onSubAgentThinking?: (content: string) => void
   onSubAgentResult?: (content: string) => void
+  onSources?: (sources: Source[]) => void
   signal?: AbortSignal
 }
 
 export async function sendMessage(options: SendMessageOptions): Promise<void> {
   const {
     threadId, content, onTextDelta, onDone, onError,
-    onSubAgentStart, onSubAgentThinking, onSubAgentResult,
+    onSubAgentStart, onSubAgentThinking, onSubAgentResult, onSources,
     signal,
   } = options
 
@@ -163,6 +164,11 @@ export async function sendMessage(options: SendMessageOptions): Promise<void> {
                 break
               case 'sub_agent_result':
                 onSubAgentResult?.(parsed.content)
+                break
+              case 'sources':
+                if (parsed.sources) {
+                  onSources?.(parsed.sources)
+                }
                 break
               case 'error':
                 if (parsed.error) {
@@ -249,6 +255,11 @@ export async function deleteDocument(documentId: string): Promise<void> {
     const error = await response.json().catch(() => ({ detail: 'Delete failed' }))
     throw new Error(error.detail || 'Delete failed')
   }
+}
+
+export async function getChunkImageUrl(chunkId: string): Promise<string> {
+  const res = await fetchApi<{ url: string }>(`/documents/chunks/${chunkId}/image-url`)
+  return res.url
 }
 
 // Settings API

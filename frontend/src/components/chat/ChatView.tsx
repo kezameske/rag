@@ -3,8 +3,8 @@ import { Send, Square, ChevronDown, ChevronRight, Search } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
-import { getMessages, sendMessage, updateThread } from '@/lib/api'
-import type { Message } from '@/types'
+import { getMessages, sendMessage, updateThread, getChunkImageUrl } from '@/lib/api'
+import type { Message, Source } from '@/types'
 
 interface ChatViewProps {
   threadId: string
@@ -19,6 +19,87 @@ interface SubAgentState {
   collapsed: boolean
 }
 
+const SUPABASE_ORIGIN = (() => {
+  try {
+    return new URL(import.meta.env.VITE_SUPABASE_URL).origin
+  } catch {
+    return ''
+  }
+})()
+
+// Only render images we trust (our Supabase storage signed URLs or data URLs).
+// Anything else (e.g. an LLM-emitted tracking pixel) renders as a plain link.
+function SafeImg({ src, alt }: { src?: string; alt?: string }) {
+  if (!src) return null
+  const trusted = src.startsWith('data:image/') || (!!SUPABASE_ORIGIN && src.startsWith(SUPABASE_ORIGIN))
+  if (!trusted) {
+    return (
+      <a href={src} target="_blank" rel="noopener noreferrer nofollow" className="text-primary underline">
+        {alt || src}
+      </a>
+    )
+  }
+  return (
+    <img
+      src={src}
+      alt={alt || ''}
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      className="max-h-72 rounded-lg border border-border"
+    />
+  )
+}
+
+// Resolves a retrieved image chunk to a short-lived signed URL and renders it.
+function ChunkImage({ chunkId, filename }: { chunkId: string; filename: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let active = true
+    getChunkImageUrl(chunkId)
+      .then((u) => { if (active) setUrl(u) })
+      .catch(() => {})
+    return () => { active = false }
+  }, [chunkId])
+  if (!url) return null
+  return <SafeImg src={url} alt={filename} />
+}
+
+// Citations row shown under an assistant answer: source chips + image thumbnails.
+function Citations({ sources }: { sources?: Source[] | null }) {
+  if (!sources || sources.length === 0) return null
+  const images = sources.filter((s) => s.has_image && s.chunk_id)
+  const seen = new Set<string>()
+  const docs = sources.filter((s) => {
+    const key = s.document_id || s.filename
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+  return (
+    <div className="ml-11 mt-3 space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        {docs.map((s, i) => (
+          <span
+            key={`${s.document_id || s.filename}-${i}`}
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-secondary px-2 py-0.5 text-xs text-muted-foreground"
+            title={s.snippet}
+          >
+            {s.content_type === 'image' ? '🖼' : '📄'} {s.filename}
+            {typeof s.page_number === 'number' ? ` · p.${s.page_number + 1}` : ''}
+          </span>
+        ))}
+      </div>
+      {images.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {images.map((s) => (
+            <ChunkImage key={s.chunk_id} chunkId={s.chunk_id} filename={s.filename} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -26,6 +107,7 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
   const [sending, setSending] = useState(false)
   const [waiting, setWaiting] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
+  const [streamingSources, setStreamingSources] = useState<Source[]>([])
   const [error, setError] = useState<string | null>(null)
   const [subAgent, setSubAgent] = useState<SubAgentState>({
     active: false, thinking: '', result: '', collapsed: false,
@@ -76,6 +158,7 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
     setSending(true)
     setWaiting(true)
     setStreamingContent('')
+    setStreamingSources([])
     setError(null)
     setSubAgent({ active: false, thinking: '', result: '', collapsed: false })
 
@@ -122,6 +205,9 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
           setSending(false)
           setWaiting(false)
           abortControllerRef.current = null
+        },
+        onSources: (sources) => {
+          setStreamingSources(sources)
         },
         onSubAgentStart: () => {
           setWaiting(false)
@@ -209,13 +295,15 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
           user_id: '',
           role: 'assistant',
           content: streamingContent,
+          sources: streamingSources,
           created_at: new Date().toISOString(),
         } as Message,
       ])
       setStreamingContent('')
+      setStreamingSources([])
       setSubAgent({ active: false, thinking: '', result: '', collapsed: false })
     }
-  }, [sending, streamingContent, threadId])
+  }, [sending, streamingContent, threadId, streamingSources])
 
   if (loading) {
     return (
@@ -266,31 +354,34 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
                       </div>
                     </div>
                   ) : (
-                    <div className="flex gap-4">
-                      <div
-                        className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
-                        style={{ background: 'hsl(var(--primary) / 0.1)' }}
-                      >
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="hsl(var(--primary))"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
+                    <div>
+                      <div className="flex gap-4">
+                        <div
+                          className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+                          style={{ background: 'hsl(var(--primary) / 0.1)' }}
                         >
-                          <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                          <path d="M2 17l10 5 10-5" />
-                          <path d="M2 12l10 5 10-5" />
-                        </svg>
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="hsl(var(--primary))"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                            <path d="M2 17l10 5 10-5" />
+                            <path d="M2 12l10 5 10-5" />
+                          </svg>
+                        </div>
+                        <div className="prose prose-neutral dark:prose-invert max-w-none text-[15px] leading-relaxed prose-p:my-2 prose-headings:mt-4 prose-headings:mb-2 prose-pre:bg-secondary prose-pre:border prose-pre:border-border prose-code:text-primary prose-code:font-medium">
+                          <ReactMarkdown components={{ img: SafeImg as any }} remarkPlugins={[remarkGfm]}>
+                            {message.content}
+                          </ReactMarkdown>
+                        </div>
                       </div>
-                      <div className="prose prose-neutral dark:prose-invert max-w-none text-[15px] leading-relaxed prose-p:my-2 prose-headings:mt-4 prose-headings:mb-2 prose-pre:bg-secondary prose-pre:border prose-pre:border-border prose-code:text-primary prose-code:font-medium">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {message.content}
-                        </ReactMarkdown>
-                      </div>
+                      <Citations sources={message.sources} />
                     </div>
                   )}
                 </div>
@@ -382,31 +473,34 @@ export function ChatView({ threadId, onThreadTitleUpdate, initialMessage }: Chat
 
               {/* Streaming message */}
               {streamingContent && (
-                <div className="message-animate flex gap-4">
-                  <div
-                    className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
-                    style={{ background: 'hsl(var(--primary) / 0.1)' }}
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="hsl(var(--primary))"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
+                <div className="message-animate">
+                  <div className="flex gap-4">
+                    <div
+                      className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+                      style={{ background: 'hsl(var(--primary) / 0.1)' }}
                     >
-                      <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                      <path d="M2 17l10 5 10-5" />
-                      <path d="M2 12l10 5 10-5" />
-                    </svg>
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="hsl(var(--primary))"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                        <path d="M2 17l10 5 10-5" />
+                        <path d="M2 12l10 5 10-5" />
+                      </svg>
+                    </div>
+                    <div className="prose prose-neutral dark:prose-invert max-w-none text-[15px] leading-relaxed prose-p:my-2 prose-headings:mt-4 prose-headings:mb-2 prose-pre:bg-secondary prose-pre:border prose-pre:border-border prose-code:text-primary prose-code:font-medium">
+                      <ReactMarkdown components={{ img: SafeImg as any }} remarkPlugins={[remarkGfm]}>
+                        {streamingContent}
+                      </ReactMarkdown>
+                    </div>
                   </div>
-                  <div className="prose prose-neutral dark:prose-invert max-w-none text-[15px] leading-relaxed prose-p:my-2 prose-headings:mt-4 prose-headings:mb-2 prose-pre:bg-secondary prose-pre:border prose-pre:border-border prose-code:text-primary prose-code:font-medium">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {streamingContent}
-                    </ReactMarkdown>
-                  </div>
+                  <Citations sources={streamingSources} />
                 </div>
               )}
 

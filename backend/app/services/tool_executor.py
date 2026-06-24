@@ -6,16 +6,14 @@ from app.services.retrieval_service import search_documents
 logger = logging.getLogger(__name__)
 
 
-async def execute_tool_call(tool_call: dict, user_id: str) -> str:
+async def execute_tool_call(tool_call: dict, user_id: str) -> tuple[str, list]:
     """
-    Execute a tool call and return the result as a string.
-
-    Args:
-        tool_call: Dict with 'name' and 'arguments' keys
-        user_id: The user's ID for context
+    Execute a tool call.
 
     Returns:
-        Tool result as a string
+        (result_text, sources) where result_text is the tool output fed back to the
+        model, and sources is a list of structured citations (non-empty only for
+        search_documents) for the frontend to render and for persistence.
     """
     name = tool_call["name"]
     arguments = json.loads(tool_call["arguments"])
@@ -28,10 +26,10 @@ async def execute_tool_call(tool_call: dict, user_id: str) -> str:
         results = await search_documents(query, user_id, metadata_filter=metadata_filter)
 
         if not results:
-            return "No relevant documents found."
+            return "No relevant documents found.", []
 
-        # Format results for LLM context
         formatted = []
+        sources = []
         for r in results:
             meta = r.get("metadata", {}) or {}
             filename = meta.get("filename", "unknown")
@@ -50,22 +48,32 @@ async def execute_tool_call(tool_call: dict, user_id: str) -> str:
             # so the model knows the source is an image/figure (and can cite it).
             label = "Image" if ctype == "image" else "Source"
             loc = f", page {page + 1}" if isinstance(page, int) else ""
-            source = f"[{label}: {filename}{loc}"
+            source_line = f"[{label}: {filename}{loc}"
             if doc_id:
-                source += f" | doc:{doc_id}"
-            source += f" | {score_str}]"
-            formatted.append(f"{source}\n{r.get('content', '')}")
+                source_line += f" | doc:{doc_id}"
+            source_line += f" | {score_str}]"
+            formatted.append(f"{source_line}\n{r.get('content', '')}")
 
-        return "\n\n---\n\n".join(formatted)
+            sources.append({
+                "chunk_id": r.get("id"),
+                "document_id": doc_id or None,
+                "filename": filename,
+                "content_type": ctype,
+                "page_number": page,
+                "has_image": bool(meta.get("image_path")),
+                "snippet": (r.get("content") or "")[:160],
+            })
+
+        return "\n\n---\n\n".join(formatted), sources
 
     if name == "query_documents_sql":
         question = arguments.get("question", "")
         from app.services.sql_service import text_to_sql_query
-        return await text_to_sql_query(question, user_id)
+        return await text_to_sql_query(question, user_id), []
 
     # analyze_document is handled specially in chat.py, not here
     if name == "analyze_document":
-        return "Error: analyze_document should be handled by the chat router"
+        return "Error: analyze_document should be handled by the chat router", []
 
     logger.warning(f"Unknown tool: {name}")
-    return f"Error: Unknown tool '{name}'"
+    return f"Error: Unknown tool '{name}'", []
